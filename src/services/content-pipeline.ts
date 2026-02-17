@@ -30,7 +30,7 @@ export class ContentPipeline {
     userId: string,
     request: IngestRequest,
     onProgress?: ProgressCallback
-  ): Promise<string> {
+  ): Promise<void> {
     const sourceType = request.type || detectSourceType(request.url || request.doi || "");
     
     // 1. Create source record in PENDING state
@@ -58,7 +58,7 @@ export class ContentPipeline {
     sourceId: string,
     request: IngestRequest,
     onProgress?: ProgressCallback
-  ): Promise<string> {
+  ): Promise<void> {
     const source = await prisma.source.findUnique({ where: { id: sourceId } });
     if (!source) throw new Error("Source not found");
     const sourceType = source.type as string;
@@ -77,7 +77,7 @@ export class ContentPipeline {
     sourceType: string,
     request: IngestRequest,
     onProgress?: ProgressCallback
-  ): Promise<string> {
+  ): Promise<void> {
     try {
       // 2. FETCH — retrieve the content
       onProgress?.("FETCHING", "Retrieving content from source...");
@@ -296,7 +296,7 @@ export class ContentPipeline {
       onProgress?.("COMPLETE", "Content processed successfully!");
       await this.updateStatus(sourceId, "COMPLETE");
 
-      return sourceId;
+      // done
 
     } catch (error: any) {
       console.error("Pipeline error:", error);
