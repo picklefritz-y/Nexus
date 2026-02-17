@@ -58,7 +58,7 @@ export class ContentPipeline {
     sourceId: string,
     request: IngestRequest,
     onProgress?: ProgressCallback
-  ): Promise<void> {
+  ): Promise<string> {
     const source = await prisma.source.findUnique({ where: { id: sourceId } });
     if (!source) throw new Error("Source not found");
     const sourceType = source.type as string;
@@ -77,7 +77,7 @@ export class ContentPipeline {
     sourceType: string,
     request: IngestRequest,
     onProgress?: ProgressCallback
-  ): Promise<void> {
+  ): Promise<string> {
     try {
       // 2. FETCH — retrieve the content
       onProgress?.("FETCHING", "Retrieving content from source...");
