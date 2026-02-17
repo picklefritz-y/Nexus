@@ -1286,7 +1286,7 @@ function AnalyticsView({ tc }: any) {
             <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.35)", fontWeight: 600, margin: 0 }}>Retention — 30 Days</h3>
             <div style={{ display: "flex", gap: 4 }}>
               <button onClick={() => setRetentionTheme(null)} style={{ padding: "2px 8px", borderRadius: 4, fontSize: 9, background: !retentionTheme ? "rgba(0,229,255,0.15)" : "rgba(255,255,255,0.04)", border: !retentionTheme ? "1px solid rgba(0,229,255,0.3)" : "1px solid rgba(255,255,255,0.06)", color: !retentionTheme ? "#00e5ff" : "rgba(255,255,255,0.3)", cursor: "pointer", fontFamily: "inherit" }}>All</button>
-              {allRetThemes.slice(0, 4).map(t => (
+              {allRetThemes.slice(0, 4).map((t: any) => (
                 <button key={t} onClick={() => setRetentionTheme(retentionTheme === t ? null : t)} style={{ padding: "2px 8px", borderRadius: 4, fontSize: 9, background: retentionTheme === t ? `${tc(t).accent}20` : "rgba(255,255,255,0.04)", border: retentionTheme === t ? `1px solid ${tc(t).accent}40` : "1px solid rgba(255,255,255,0.06)", color: retentionTheme === t ? tc(t).accent : "rgba(255,255,255,0.3)", cursor: "pointer", fontFamily: "inherit" }}>{t.length > 12 ? t.slice(0, 10) + "…" : t}</button>
               ))}
             </div>
@@ -1302,7 +1302,7 @@ function AnalyticsView({ tc }: any) {
             {/* Line */}
             <path d={retentionPath} fill="none" stroke={retentionTheme ? tc(retentionTheme).accent : "#00e5ff"} strokeWidth={2} strokeLinecap="round" />
             {/* Dots */}
-            {retentionPoints.filter((_, i) => i % 5 === 0 || i === retentionPoints.length - 1).map((p, i) => (
+            {retentionPoints.filter((_: any, i: number) => i % 5 === 0 || i === retentionPoints.length - 1).map((p, i) => (
               <circle key={i} cx={p.x} cy={p.y} r={3} fill={retentionTheme ? tc(retentionTheme).accent : "#00e5ff"} />
             ))}
             {/* Date labels */}
@@ -1361,7 +1361,7 @@ function AnalyticsView({ tc }: any) {
             <>
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
                 <svg width={120} height={120} viewBox="0 0 120 120">
-                  {ratingValues.map((val, i) => {
+                  {ratingValues.map((val: any, i: number) => {
                     const pct = val / ratingTotal;
                     if (pct === 0) return null;
                     const startAngle = ratingAngle;
