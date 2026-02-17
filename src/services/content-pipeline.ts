@@ -47,7 +47,7 @@ export class ContentPipeline {
     });
 
     await this.runPipeline(userId, source.id, sourceType, request, onProgress);
-    return source.id;
+    // done
   }
 
   /**
