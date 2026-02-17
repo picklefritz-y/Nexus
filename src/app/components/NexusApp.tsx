@@ -1302,7 +1302,7 @@ function AnalyticsView({ tc }: any) {
             {/* Line */}
             <path d={retentionPath} fill="none" stroke={retentionTheme ? tc(retentionTheme).accent : "#00e5ff"} strokeWidth={2} strokeLinecap="round" />
             {/* Dots */}
-            {retentionPoints.filter((_: any, i: number) => i % 5 === 0 || i === retentionPoints.length - 1).map((p, i) => (
+            {retentionPoints.filter((_: any, i: number) => i % 5 === 0 || i === retentionPoints.length - 1.map((p: any, i: number) => (
               <circle key={i} cx={p.x} cy={p.y} r={3} fill={retentionTheme ? tc(retentionTheme).accent : "#00e5ff"} />
             ))}
             {/* Date labels */}
