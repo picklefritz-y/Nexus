@@ -215,7 +215,7 @@ export default function NexusApp() {
       if (data.success) {
         const newCard = { ...claim.card, due: data.data.newDue, stability: data.data.stability, difficulty: data.data.difficulty, scheduledDays: data.data.scheduledDays, reps: data.data.reps, lapses: data.data.lapses, state: data.data.state, lastReview: new Date().toISOString() };
         setClaims(prev => prev.map(c => c.id === claim.id ? { ...c, card: newCard } : c));
-        setReviewQueue(prev => prev.map((c, i) => i === currentReviewIndex ? { ...c, card: newCard } : c));
+        setReviewQueue(prev => prev.map((c: any, i: number) => i === currentReviewIndex ? { ...c, card: newCard } : c));
       }
     } catch (err) { console.error("Rating error:", err); }
     if (currentReviewIndex < reviewQueue.length - 1) { setCurrentReviewIndex(prev => prev + 1); setShowAnswer(false); } else { setView("dashboard"); fetchData(); }
@@ -418,7 +418,7 @@ function DashboardView({ themeStats, sources, claims, dueCards, onThemeClick, on
           { label: "Consensus Claims", value: <span style={{ fontSize: 28, fontWeight: 700, color: "#00e676", fontFamily: "'JetBrains Mono'" }}>{consensus}</span>, sub: "well-supported" },
           { label: "Active Debates", value: <span style={{ fontSize: 28, fontWeight: 700, color: "#ff4081", fontFamily: "'JetBrains Mono'" }}>{contested}</span>, sub: "contradictions found" },
           { label: "Due for Review", value: <button onClick={onStartReview} disabled={dueCards.length === 0} style={{ fontSize: 28, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: dueCards.length > 0 ? "#ffd600" : "rgba(255,255,255,0.3)", background: dueCards.length > 0 ? "rgba(255,214,0,0.1)" : "transparent", border: dueCards.length > 0 ? "1px solid rgba(255,214,0,0.2)" : "none", borderRadius: 8, padding: "4px 16px", cursor: dueCards.length > 0 ? "pointer" : "default" }}>{dueCards.length}</button>, sub: "start session →" },
-        ].map((stat, i) => (
+        ].map((stat: any, i: number) => (
           <div key={i} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "20px 24px" }}>
             <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.35)", marginBottom: 12, fontWeight: 600 }}>{stat.label}</div>
             <div style={{ marginBottom: 6 }}>{stat.value}</div>
@@ -571,7 +571,7 @@ function LibraryView({ sources, claims, selectedSource, onSelectSource, tc }: an
         ))}
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ marginLeft: "auto", padding: "6px 16px", borderRadius: 20, fontSize: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#e4e4e7", outline: "none", width: 200, fontFamily: "inherit" }} />
       </div>
-      {Object.entries(grouped).map(([period, items]) => (
+      {Object.entries(grouped).map(([period, items]: [string, any]) => (
         <div key={period} style={{ marginBottom: 28 }}>
           <h3 style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", marginBottom: 10, fontWeight: 600 }}>{period}</h3>
           {(items as any[]).map((s: any) => (
@@ -612,7 +612,7 @@ function ClaimsView({ claims, sources, FSRS, tc }: any) {
           <button key={s} onClick={() => setSortBy(s)} style={{ padding: "6px 16px", borderRadius: 20, fontSize: 12, fontWeight: 500, background: sortBy === s ? "rgba(124,77,255,0.12)" : "rgba(255,255,255,0.04)", border: sortBy === s ? "1px solid rgba(124,77,255,0.3)" : "1px solid rgba(255,255,255,0.08)", color: sortBy === s ? "#7c4dff" : "rgba(255,255,255,0.5)", cursor: "pointer", fontFamily: "inherit" }}>Sort by {s}</button>
         ))}
       </div>
-      {Object.entries(groups).map(([status, items]) => (
+      {Object.entries(groups).map(([status, items]: [string, any]) => (
         <div key={status} style={{ marginBottom: 28 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}><StatusBadge status={status} /><span style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>({(items as any[]).length})</span></div>
           {(items as any[]).map((claim: any) => (
@@ -657,7 +657,7 @@ function IngestView({ url, setUrl, step, onSubmit, statusMessage }: any) {
         {step > 0 && (
           <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 20 }}>
             {statusMessage && <div style={{ fontSize: 13, color: "#00e5ff", marginBottom: 12 }}>{statusMessage}</div>}
-            {steps.map((label, i) => { const idx = i + 1; const active = idx === step; const done = idx < step; return (
+            {steps.map((label: any, i: number) => { const idx = i + 1; const active = idx === step; const done = idx < step; return (
               <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 14px", borderRadius: 8, marginBottom: 4, background: active ? "rgba(0,229,255,0.06)" : "transparent", opacity: done || active ? 1 : 0.3 }}>
                 <span style={{ width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, background: done ? "rgba(0,230,118,0.15)" : active ? "rgba(0,229,255,0.15)" : "rgba(255,255,255,0.04)", border: done ? "1px solid rgba(0,230,118,0.3)" : active ? "1px solid rgba(0,229,255,0.3)" : "1px solid rgba(255,255,255,0.06)" }}>{done ? "✓" : idx}</span>
                 <span style={{ fontSize: 13, color: done ? "#00e676" : active ? "#00e5ff" : "rgba(255,255,255,0.4)", fontWeight: active ? 600 : 400 }}>{label}</span>
@@ -1248,7 +1248,7 @@ function AnalyticsView({ tc }: any) {
           { label: "Total Reviews", value: overview.totalReviews, color: "#7c4dff", sub: `${overview.avgReviewsPerDay}/day avg` },
           { label: "Knowledge Base", value: overview.totalClaims, color: "#00e5ff", sub: `${overview.totalSources} sources · ${overview.totalThemes} themes` },
           { label: "Due Now", value: overview.dueNow, color: overview.dueNow > 0 ? "#ff9100" : "#00e676", sub: overview.dueNow > 0 ? "ready for review" : "all caught up" },
-        ].map((s, i) => (
+        ].map((s: any, i: number) => (
           <div key={i} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "16px 20px", animation: `fadeSlideIn 0.4s ease ${i * 0.06}s both` }}>
             <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", fontWeight: 600, marginBottom: 8 }}>{s.label}</div>
             <div style={{ fontSize: 28, fontWeight: 700, color: s.color, fontFamily: "'JetBrains Mono'" }}>{s.value}</div>
@@ -1261,7 +1261,7 @@ function AnalyticsView({ tc }: any) {
       <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "24px 28px", marginBottom: 24, animation: "fadeSlideIn 0.4s ease 0.3s both" }}>
         <h3 style={{ fontSize: 13, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.35)", fontWeight: 600, margin: "0 0 16px" }}>Review Activity — Last 12 Weeks</h3>
         <div style={{ display: "flex", gap: 3 }}>
-          {weeks.map((week, wi) => (
+          {weeks.map((week: any, wi: number) => (
             <div key={wi} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
               {week.map(([date, d]: any) => {
                 const intensity = d.count / maxReviews;
@@ -1302,7 +1302,7 @@ function AnalyticsView({ tc }: any) {
             {/* Line */}
             <path d={retentionPath} fill="none" stroke={retentionTheme ? tc(retentionTheme).accent : "#00e5ff"} strokeWidth={2} strokeLinecap="round" />
             {/* Dots */}
-            {retentionPoints.filter((_: any, i: number) => i % 5 === 0 || i === retentionPoints.length - 1.map((p: any, i: number) => (
+            {retentionPoints.filter((_: any, i: number) => i % 5 === 0 || i === retentionPoints.length - 1).map((p: any, i: number) => (
               <circle key={i} cx={p.x} cy={p.y} r={3} fill={retentionTheme ? tc(retentionTheme).accent : "#00e5ff"} />
             ))}
             {/* Date labels */}
@@ -1379,7 +1379,7 @@ function AnalyticsView({ tc }: any) {
                   <text x={60} y={70} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize={8}>REVIEWS</text>
                 </svg>
               </div>
-              {ratingLabels.map((label, i) => (
+              {ratingLabels.map((label: any, i: number) => (
                 <div key={label} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: ratingColors[i], flexShrink: 0 }} />
                   <span style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", flex: 1 }}>{label}</span>

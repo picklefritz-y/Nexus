@@ -184,7 +184,7 @@ export class PaperService {
   async extractPdfText(pdfBuffer: Buffer): Promise<string> {
     // Dynamic import for pdf-parse (CommonJS module)
     // @ts-ignore
-    const pdfParse = (await import("pdf-parse" as any)).default;
+    const pdfParse = (await import("pdf-parse")).default;
 
     const data = await pdfParse(pdfBuffer);
     return data.text;

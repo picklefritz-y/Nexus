@@ -82,7 +82,7 @@ async function fetchPaper(identifier: string) {
       if (pdfRes.ok) {
         const buffer = Buffer.from(await pdfRes.arrayBuffer());
         // @ts-ignore
-        const pdfParse = (await import("pdf-parse" as any)).default;
+        const pdfParse = (await import("pdf-parse")).default;
         const pdfData = await pdfParse(buffer);
         fullText = pdfData.text;
         logDetail(`✅ Extracted ${fullText.length} characters from PDF`);
