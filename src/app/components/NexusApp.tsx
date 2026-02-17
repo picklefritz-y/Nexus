@@ -1204,7 +1204,7 @@ function AnalyticsView({ tc }: any) {
     const y = chartH - chartPad - val * (chartH - chartPad * 2);
     return { x, y, date: d.date, value: val };
   });
-  const retentionPath = retentionPoints.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  const retentionPath = retentionPoints.map((p: any, i: number) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
   const retentionFill = retentionPath + ` L ${retentionPoints[retentionPoints.length - 1]?.x} ${chartH - chartPad} L ${chartPad} ${chartH - chartPad} Z`;
   const allRetThemes = [...new Set(retentionByDay.flatMap((d: any) => Object.keys(d.byTheme)))];
 
@@ -1221,8 +1221,8 @@ function AnalyticsView({ tc }: any) {
     const y = chartH - chartPad - (d.sources / maxSources) * (chartH - chartPad * 2);
     return { x, y };
   });
-  const claimPath = growthClaimPoints.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
-  const sourcePath = growthSourcePoints.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  const claimPath = growthClaimPoints.map((p: any, i: number) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  const sourcePath = growthSourcePoints.map((p: any, i: number) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
 
   // Rating donut
   const ratingColors = ["#ff1744", "#ff9100", "#00e676", "#00e5ff"];
