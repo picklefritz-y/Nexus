@@ -41,7 +41,6 @@ async function transcribe(url: string) {
     },
     body: JSON.stringify({
       audio_url: url,
-      speech_models: ["universal-2"],
       auto_chapters: true,
       speaker_labels: true,
       iab_categories: true,
