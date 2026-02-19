@@ -1498,7 +1498,7 @@ function TablesView({ tc }: any) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: trimmed }),
       });
-      const data = await res.ok ? res.json() : { success: false, error: "Server error" };
+      const data = res.ok ? await res.json() : { success: false, error: "Server error" };
 
       if (data.success) {
         setTables((prev: TableData[]) => [...prev, data.data]);
