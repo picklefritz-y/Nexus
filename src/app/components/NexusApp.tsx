@@ -225,26 +225,36 @@ export default function NexusApp() {
     if (!ingestUrl.trim()) return;
     setIngestStep(1); setIngestStatus("Submitting...");
     try {
+      setIngestStep(2); setIngestStatus("Processing — this takes 15–30 seconds...");
       const res = await fetch("/api/content/ingest", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: ingestUrl }) });
       const data = await res.json();
       if (!data.success) { setIngestStatus(`Error: ${data.error}`); setIngestStep(0); return; }
-      const sourceId = data.data.sourceId;
-      setIngestStep(2); setIngestStatus("Processing...");
-      const poll = setInterval(async () => {
-        try {
-          const sr = await fetch(`/api/content/${sourceId}`); const sd = await sr.json();
-          if (sd.success) {
-            const st = sd.data.status;
-            if (st === "FETCHING") { setIngestStep(2); setIngestStatus("Fetching content..."); }
-            else if (st === "EXTRACTING") { setIngestStep(3); setIngestStatus("Extracting text..."); }
-            else if (st === "PROCESSING") { setIngestStep(4); setIngestStatus("AI processing claims..."); }
-            else if (st === "LINKING") { setIngestStep(5); setIngestStatus("Building knowledge graph..."); }
-            else if (st === "COMPLETE") { clearInterval(poll); setIngestStep(6); setIngestStatus("Complete!"); setTimeout(() => { setIngestStep(0); setIngestUrl(""); fetchData(); }, 2500); }
-            else if (st === "FAILED") { clearInterval(poll); setIngestStatus(`Failed: ${sd.data.processingError || "Unknown"}`); setIngestStep(0); }
-          }
-        } catch {}
-      }, 3000);
-      setTimeout(() => clearInterval(poll), 300000);
+      const status = data.data.status;
+      if (status === "COMPLETE") {
+        setIngestStep(6); setIngestStatus("Complete!");
+        setTimeout(() => { setIngestStep(0); setIngestUrl(""); fetchData(); }, 2500);
+      } else if (status === "FAILED") {
+        setIngestStatus(`Failed: ${data.data.error || "Unknown error"}`); setIngestStep(0);
+      } else {
+        // Fallback: poll if somehow we get PENDING back (e.g. local dev with old route)
+        const sourceId = data.data.sourceId;
+        setIngestStep(2); setIngestStatus("Processing...");
+        const poll = setInterval(async () => {
+          try {
+            const sr = await fetch(`/api/content/${sourceId}`); const sd = await sr.json();
+            if (sd.success) {
+              const st = sd.data.status;
+              if (st === "FETCHING") { setIngestStep(2); setIngestStatus("Fetching content..."); }
+              else if (st === "EXTRACTING") { setIngestStep(3); setIngestStatus("Extracting text..."); }
+              else if (st === "PROCESSING") { setIngestStep(4); setIngestStatus("AI processing claims..."); }
+              else if (st === "LINKING") { setIngestStep(5); setIngestStatus("Building knowledge graph..."); }
+              else if (st === "COMPLETE") { clearInterval(poll); setIngestStep(6); setIngestStatus("Complete!"); setTimeout(() => { setIngestStep(0); setIngestUrl(""); fetchData(); }, 2500); }
+              else if (st === "FAILED") { clearInterval(poll); setIngestStatus(`Failed: ${sd.data.processingError || "Unknown"}`); setIngestStep(0); }
+            }
+          } catch {}
+        }, 3000);
+        setTimeout(() => clearInterval(poll), 300000);
+      }
     } catch (err: any) { setIngestStatus(`Error: ${err.message}`); setIngestStep(0); }
   };
 
