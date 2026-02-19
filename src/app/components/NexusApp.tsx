@@ -261,6 +261,7 @@ export default function NexusApp() {
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: "◆" },
     { id: "chat", label: "Chat", icon: "◬" },
+    { id: "tables", label: "Tables", icon: "▤" },
     { id: "graph", label: "Graph", icon: "◉" },
     { id: "analytics", label: "Analytics", icon: "▦" },
     { id: "library", label: "Library", icon: "◫" },
@@ -400,6 +401,7 @@ export default function NexusApp() {
           {view === "graph" && <GraphView claims={claims} sources={sources} themeStats={themeStats} tc={tc} FSRS={FSRS} />}
           {view === "analytics" && <AnalyticsView tc={tc} />}
           {view === "chat" && <ChatView tc={tc} />}
+          {view === "tables" && <TablesView tc={tc} />}
           {view === "ingest" && <IngestView url={ingestUrl} setUrl={setIngestUrl} step={ingestStep} onSubmit={handleIngest} statusMessage={ingestStatus} />}
           {view === "review" && reviewQueue.length > 0 && <ReviewView claim={reviewQueue[currentReviewIndex]} index={currentReviewIndex} total={reviewQueue.length} showAnswer={showAnswer} onReveal={() => setShowAnswer(true)} onRate={handleRating} sources={sources} claims={claims} FSRS={FSRS} tc={tc} />}
         </>}
@@ -1456,6 +1458,312 @@ function AnalyticsView({ tc }: any) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// Tables View — Structured Data Comparisons
+// ============================================================
+interface TableData {
+  title: string;
+  description: string;
+  columns: { key: string; label: string; type: string }[];
+  rows: Record<string, string>[];
+  footnotes?: string;
+  meta?: { claimsSearched: number; sourcesSearched: number; searchTerms: string[]; generatedAt: string };
+}
+
+function TablesView({ tc }: any) {
+  const [tables, setTables] = useState<TableData[]>([]);
+  const [activeTable, setActiveTable] = useState<number>(0);
+  const [prompt, setPrompt] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleGenerate = async () => {
+    const trimmed = prompt.trim();
+    if (!trimmed || loading) return;
+    setLoading(true);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/tables/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: trimmed }),
+      });
+      const data = await res.ok ? res.json() : { success: false, error: "Server error" };
+
+      if (data.success) {
+        setTables((prev: TableData[]) => [...prev, data.data]);
+        setActiveTable(tables.length);
+        setPrompt("");
+        setSortCol(null);
+      } else {
+        setError(data.error || "Failed to generate table");
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleGenerate(); }
+  };
+
+  const handleSort = (key: string) => {
+    if (sortCol === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortCol(key);
+      setSortDir("asc");
+    }
+  };
+
+  const getSortedRows = (table: TableData) => {
+    if (!sortCol) return table.rows;
+    return [...table.rows].sort((a: Record<string, string>, b: Record<string, string>) => {
+      const aVal = (a[sortCol] || "").toString();
+      const bVal = (b[sortCol] || "").toString();
+      const aNum = parseFloat(aVal.replace(/[^0-9.-]/g, ""));
+      const bNum = parseFloat(bVal.replace(/[^0-9.-]/g, ""));
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        return sortDir === "asc" ? aNum - bNum : bNum - aNum;
+      }
+      return sortDir === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    });
+  };
+
+  const exportCSV = (table: TableData) => {
+    const headers = table.columns.map((c: { key: string; label: string; type: string }) => `"${c.label.replace(/"/g, '""')}"`).join(",");
+    const rows = table.rows.map((row: Record<string, string>) =>
+      table.columns.map((c: { key: string; label: string; type: string }) => {
+        const val = (row[c.key] || "").toString().replace(/"/g, '""');
+        return `"${val}"`;
+      }).join(",")
+    ).join("\n");
+    const csv = `${headers}\n${rows}`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${table.title.replace(/[^a-z0-9]/gi, "_").toLowerCase()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const currentTable = tables[activeTable] || null;
+
+  const suggestedPrompts = [
+    "Compare PME vs synthetic psilocybin across all measured outcomes",
+    "Create a table of all papers with their key findings and confidence levels",
+    "Compare evidence for and against the entourage effect",
+    "List all synaptic protein findings by brain region and treatment",
+    "Summarize consumer preferences for natural vs synthetic psychedelics",
+  ];
+
+  const getCellStyle = (type: string, value: string) => {
+    const base: any = { padding: "10px 14px", borderBottom: "1px solid rgba(255,255,255,0.04)", fontSize: 13, lineHeight: 1.5, color: "rgba(255,255,255,0.75)", verticalAlign: "top" };
+    if (type === "status") {
+      const v = (value || "").toLowerCase();
+      const statusColors: Record<string, string> = { supported: "#00e5ff", emerging: "#ffd600", contested: "#ff4081", consensus: "#00e676", contradicted: "#ff1744" };
+      if (statusColors[v]) base.color = statusColors[v];
+    }
+    if (type === "confidence") {
+      const num = parseFloat(value);
+      if (!isNaN(num)) {
+        base.color = num >= 90 ? "#00e676" : num >= 80 ? "#00e5ff" : num >= 70 ? "#ffd600" : "#ff4081";
+        base.fontWeight = 600;
+        base.fontVariantNumeric = "tabular-nums";
+      }
+    }
+    if (type === "source") {
+      base.color = "rgba(0,229,255,0.7)";
+      base.fontSize = 12;
+    }
+    if (value === "—") {
+      base.color = "rgba(255,255,255,0.15)";
+    }
+    return base;
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 64px)", margin: "-32px -40px", padding: 0 }}>
+      {/* Header */}
+      <div style={{ padding: "20px 28px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, fontFamily: "'Playfair Display', serif", background: "linear-gradient(135deg, #e4e4e7 30%, rgba(228,228,231,0.5))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Data Tables</h1>
+            <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, margin: "6px 0 0" }}>Generate structured comparisons from your knowledge base</p>
+          </div>
+          {tables.length > 0 && (
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => exportCSV(currentTable!)} style={{ padding: "8px 16px", background: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.2)", borderRadius: 8, color: "#00e5ff", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+                ↓ Export CSV
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Table tabs */}
+        {tables.length > 1 && (
+          <div style={{ display: "flex", gap: 4, marginTop: 16, overflowX: "auto", paddingBottom: 4 }}>
+            {tables.map((t: TableData, i: number) => (
+              <button key={i} onClick={() => { setActiveTable(i); setSortCol(null); }} style={{
+                padding: "6px 14px", borderRadius: 6, border: activeTable === i ? "1px solid rgba(0,229,255,0.2)" : "1px solid rgba(255,255,255,0.06)",
+                background: activeTable === i ? "rgba(0,229,255,0.08)" : "rgba(255,255,255,0.02)",
+                color: activeTable === i ? "#00e5ff" : "rgba(255,255,255,0.4)",
+                fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap",
+              }}>
+                {t.title}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflow: "auto", padding: "20px 28px" }}>
+        {/* Empty state */}
+        {tables.length === 0 && !loading && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 24 }}>
+            <div style={{ fontSize: 48, opacity: 0.15 }}>▤</div>
+            <div style={{ textAlign: "center", maxWidth: 480 }}>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>Generate data tables from your research</div>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", lineHeight: 1.6 }}>Describe the comparison you want and Nexus will create a structured table from your claims and sources. Export to CSV for further analysis.</div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 480 }}>
+              {suggestedPrompts.map((q: string, i: number) => (
+                <button key={i} onClick={() => { setPrompt(q); inputRef.current?.focus(); }} style={{ padding: "10px 16px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, color: "rgba(255,255,255,0.45)", fontSize: 13, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "all 0.15s" }} onMouseEnter={(e: any) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }} onMouseLeave={(e: any) => { e.currentTarget.style.background = "rgba(255,255,255,0.02)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"; }}>
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Loading */}
+        {loading && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60%", gap: 16 }}>
+            <span style={{ width: 28, height: 28, borderRadius: "50%", border: "2px solid rgba(0,229,255,0.2)", borderTopColor: "#00e5ff", animation: "spin 0.8s linear infinite", display: "inline-block" }} />
+            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.3)" }}>Searching knowledge base & generating table...</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.15)" }}>This takes 10–20 seconds</div>
+          </div>
+        )}
+
+        {/* Error */}
+        {error && (
+          <div style={{ padding: "12px 16px", background: "rgba(255,23,68,0.08)", border: "1px solid rgba(255,23,68,0.2)", borderRadius: 10, color: "#ff8a80", fontSize: 13, marginBottom: 16 }}>
+            Error: {error}
+          </div>
+        )}
+
+        {/* Table display */}
+        {currentTable && !loading && (
+          <div style={{ animation: "fadeSlideIn 0.3s ease" }}>
+            {/* Title & description */}
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: "#e4e4e7", margin: "0 0 6px" }}>{currentTable.title}</h2>
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", margin: 0, lineHeight: 1.5 }}>{currentTable.description}</p>
+            </div>
+
+            {/* The table */}
+            <div style={{ overflowX: "auto", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.01)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: currentTable.columns.length * 160 }}>
+                <thead>
+                  <tr>
+                    {currentTable.columns.map((col: { key: string; label: string; type: string }) => (
+                      <th key={col.key} onClick={() => handleSort(col.key)} style={{
+                        padding: "12px 14px", textAlign: "left", fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em",
+                        color: sortCol === col.key ? "#00e5ff" : "rgba(255,255,255,0.35)",
+                        borderBottom: "1px solid rgba(255,255,255,0.08)", cursor: "pointer", userSelect: "none",
+                        background: "rgba(255,255,255,0.02)", whiteSpace: "nowrap", position: "sticky", top: 0,
+                      }}>
+                        {col.label}
+                        {sortCol === col.key && (
+                          <span style={{ marginLeft: 4, fontSize: 9 }}>{sortDir === "asc" ? "▲" : "▼"}</span>
+                        )}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {getSortedRows(currentTable).map((row: Record<string, string>, ri: number) => (
+                    <tr key={ri} style={{ transition: "background 0.15s" }} onMouseEnter={(e: any) => e.currentTarget.style.background = "rgba(255,255,255,0.02)"} onMouseLeave={(e: any) => e.currentTarget.style.background = "transparent"}>
+                      {currentTable.columns.map((col: { key: string; label: string; type: string }) => (
+                        <td key={col.key} style={getCellStyle(col.type, row[col.key] || "")}>
+                          {row[col.key] || "—"}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footnotes */}
+            {currentTable.footnotes && (
+              <div style={{ marginTop: 16, padding: "12px 16px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)", borderRadius: 10, fontSize: 12, color: "rgba(255,255,255,0.3)", lineHeight: 1.6 }}>
+                {currentTable.footnotes}
+              </div>
+            )}
+
+            {/* Meta */}
+            {currentTable.meta && (
+              <div style={{ marginTop: 12, display: "flex", gap: 16, fontSize: 11, color: "rgba(255,255,255,0.2)" }}>
+                <span>{currentTable.meta.claimsSearched} claims searched</span>
+                <span>{currentTable.meta.sourcesSearched} sources searched</span>
+                <span>{currentTable.rows.length} rows generated</span>
+                <span>{new Date(currentTable.meta.generatedAt).toLocaleTimeString()}</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div style={{ padding: "16px 28px 20px", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", maxWidth: 800 }}>
+          <textarea
+            ref={inputRef}
+            value={prompt}
+            onChange={(e: any) => setPrompt(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Describe the table you want (e.g. 'Compare PME vs synthetic psilocybin across all outcomes')..."
+            rows={prompt.includes("\n") ? 2 : 1}
+            style={{
+              flex: 1, padding: "12px 16px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 12, color: "#e4e4e7", fontSize: 14, fontFamily: "inherit", resize: "none", outline: "none",
+              lineHeight: 1.5, transition: "border-color 0.2s",
+            }}
+            onFocus={(e: any) => e.target.style.borderColor = "rgba(0,229,255,0.3)"}
+            onBlur={(e: any) => e.target.style.borderColor = "rgba(255,255,255,0.1)"}
+          />
+          <button
+            onClick={handleGenerate}
+            disabled={!prompt.trim() || loading}
+            style={{
+              padding: "12px 20px", borderRadius: 12, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: prompt.trim() && !loading ? "pointer" : "default",
+              background: prompt.trim() && !loading ? "linear-gradient(135deg, #00e5ff, #7c4dff)" : "rgba(255,255,255,0.05)",
+              color: prompt.trim() && !loading ? "#000" : "rgba(255,255,255,0.2)",
+              transition: "all 0.2s", flexShrink: 0,
+            }}
+          >
+            Generate
+          </button>
+        </div>
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.15)", marginTop: 8, maxWidth: 800 }}>
+          Enter to generate · Tables are built from your claims and sources · Export to CSV for spreadsheets
+        </div>
+      </div>
     </div>
   );
 }
