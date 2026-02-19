@@ -98,6 +98,316 @@ const RetentionRing = ({ value, size = 48, color = "#00e5ff" }: { value: number;
 const Spinner = () => <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 60, color: "rgba(255,255,255,0.3)" }}><span style={{ width: 24, height: 24, borderRadius: "50%", border: "2px solid rgba(0,229,255,0.2)", borderTopColor: "#00e5ff", animation: "spin 0.8s linear infinite", display: "inline-block" }} /><span style={{ marginLeft: 12, fontSize: 14 }}>Loading...</span></div>;
 
 // ============================================================
+// Visual Effects — Neural Particle Network + Aurora
+// ============================================================
+function NeuralBackground() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+    let W = 0, H = 0;
+
+    interface Neuron {
+      x: number; y: number; z: number; // z = depth layer (0=far, 1=near)
+      size: number; pulse: number; brightness: number; cooldown: number;
+      dendrites: { angle: number; length: number; branches: { t: number; angle: number; length: number }[] }[];
+    }
+    interface Signal {
+      neuronIdx: number; dendriteIdx: number;
+      progress: number; speed: number; intensity: number;
+      branchIdx: number; // -1 = main dendrite, >=0 = branch index
+    }
+    interface Glow {
+      x: number; y: number; radius: number; alpha: number; color: string;
+    }
+
+    const neurons: Neuron[] = [];
+    const signals: Signal[] = [];
+    const glows: Glow[] = [];
+    const NEURON_COUNT = 18;
+    const SIGNAL_CHANCE = 0.003;
+
+    const resize = () => {
+      W = canvas.width = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+
+    // Create neurons with dendrites
+    for (let i = 0; i < NEURON_COUNT; i++) {
+      const z = Math.random(); // depth
+      const dendriteCount = 3 + Math.floor(Math.random() * 4);
+      const dendrites: Neuron["dendrites"] = [];
+
+      for (let d = 0; d < dendriteCount; d++) {
+        const angle = (d / dendriteCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
+        const length = 60 + Math.random() * 140 + z * 60;
+        const branchCount = Math.floor(Math.random() * 3);
+        const branches: { t: number; angle: number; length: number }[] = [];
+        for (let b = 0; b < branchCount; b++) {
+          branches.push({
+            t: 0.3 + Math.random() * 0.5,
+            angle: angle + (Math.random() - 0.5) * 1.2,
+            length: 20 + Math.random() * 50,
+          });
+        }
+        dendrites.push({ angle, length, branches });
+      }
+
+      neurons.push({
+        x: Math.random() * W,
+        y: Math.random() * H,
+        z,
+        size: 4 + z * 6,
+        pulse: Math.random() * Math.PI * 2,
+        brightness: 0.1 + z * 0.1,
+        cooldown: 0,
+        dendrites,
+      });
+    }
+
+    // Get point along dendrite using quadratic curve
+    const getDendritePoint = (n: Neuron, d: Neuron["dendrites"][0], t: number) => {
+      const cx = n.x + Math.cos(d.angle + 0.3) * d.length * 0.5;
+      const cy = n.y + Math.sin(d.angle + 0.3) * d.length * 0.5;
+      const ex = n.x + Math.cos(d.angle) * d.length;
+      const ey = n.y + Math.sin(d.angle) * d.length;
+      const mt = 1 - t;
+      return {
+        x: mt * mt * n.x + 2 * mt * t * cx + t * t * ex,
+        y: mt * mt * n.y + 2 * mt * t * cy + t * t * ey,
+      };
+    };
+
+    const drawDendrite = (n: Neuron, d: Neuron["dendrites"][0], alpha: number, width: number) => {
+      const cx = n.x + Math.cos(d.angle + 0.3) * d.length * 0.5;
+      const cy = n.y + Math.sin(d.angle + 0.3) * d.length * 0.5;
+      const ex = n.x + Math.cos(d.angle) * d.length;
+      const ey = n.y + Math.sin(d.angle) * d.length;
+
+      // Main dendrite - gradient fade
+      const grad = ctx.createLinearGradient(n.x, n.y, ex, ey);
+      grad.addColorStop(0, `rgba(80, 160, 220, ${alpha})`);
+      grad.addColorStop(1, `rgba(50, 100, 180, ${alpha * 0.2})`);
+      ctx.beginPath();
+      ctx.moveTo(n.x, n.y);
+      ctx.quadraticCurveTo(cx, cy, ex, ey);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = width;
+      ctx.lineCap = "round";
+      ctx.stroke();
+
+      // Branches
+      for (const br of d.branches) {
+        const branchStart = getDendritePoint(n, d, br.t);
+        const bex = branchStart.x + Math.cos(br.angle) * br.length;
+        const bey = branchStart.y + Math.sin(br.angle) * br.length;
+        const bcx = branchStart.x + Math.cos(br.angle + 0.2) * br.length * 0.5;
+        const bcy = branchStart.y + Math.sin(br.angle + 0.2) * br.length * 0.5;
+
+        const bGrad = ctx.createLinearGradient(branchStart.x, branchStart.y, bex, bey);
+        bGrad.addColorStop(0, `rgba(80, 160, 220, ${alpha * 0.6})`);
+        bGrad.addColorStop(1, `rgba(50, 100, 180, ${alpha * 0.05})`);
+        ctx.beginPath();
+        ctx.moveTo(branchStart.x, branchStart.y);
+        ctx.quadraticCurveTo(bcx, bcy, bex, bey);
+        ctx.strokeStyle = bGrad;
+        ctx.lineWidth = width * 0.5;
+        ctx.stroke();
+      }
+    };
+
+    const draw = () => {
+      // Soft fade
+      ctx.fillStyle = "rgba(12, 34, 64, 0.25)";
+      ctx.fillRect(0, 0, W, H);
+
+      // Sort by depth (far first)
+      const sorted = neurons.map((n, i) => ({ n, i })).sort((a, b) => a.n.z - b.n.z);
+
+      // Draw dendrites (back to front)
+      for (const { n } of sorted) {
+        const depthAlpha = 0.08 + n.z * 0.18;
+        const depthWidth = 0.5 + n.z * 1.5;
+        for (const d of n.dendrites) {
+          drawDendrite(n, d, depthAlpha, depthWidth);
+        }
+      }
+
+      // Randomly fire signals
+      for (let i = 0; i < neurons.length; i++) {
+        const n = neurons[i];
+        if (n.cooldown > 0) { n.cooldown--; continue; }
+        if (Math.random() < SIGNAL_CHANCE) {
+          const dIdx = Math.floor(Math.random() * n.dendrites.length);
+          signals.push({
+            neuronIdx: i, dendriteIdx: dIdx,
+            progress: 0, speed: 0.006 + Math.random() * 0.008,
+            intensity: 0.6 + Math.random() * 0.4,
+            branchIdx: -1,
+          });
+          n.cooldown = 60 + Math.floor(Math.random() * 60);
+          n.brightness = 0.5;
+        }
+      }
+
+      // Draw signals
+      for (let s = signals.length - 1; s >= 0; s--) {
+        const sig = signals[s];
+        const n = neurons[sig.neuronIdx];
+        const d = n.dendrites[sig.dendriteIdx];
+        sig.progress += sig.speed;
+
+        if (sig.progress >= 1) {
+          // Spawn branch signals
+          if (sig.branchIdx === -1) {
+            for (let bi = 0; bi < d.branches.length; bi++) {
+              if (Math.random() < 0.6) {
+                signals.push({
+                  neuronIdx: sig.neuronIdx, dendriteIdx: sig.dendriteIdx,
+                  progress: 0, speed: sig.speed * 0.8,
+                  intensity: sig.intensity * 0.6,
+                  branchIdx: bi,
+                });
+              }
+            }
+          }
+          // End glow
+          const endPt = sig.branchIdx === -1
+            ? getDendritePoint(n, d, 1)
+            : (() => {
+                const br = d.branches[sig.branchIdx];
+                const brStart = getDendritePoint(n, d, br.t);
+                const bex = brStart.x + Math.cos(br.angle) * br.length;
+                const bey = brStart.y + Math.sin(br.angle) * br.length;
+                return { x: bex, y: bey };
+              })();
+          glows.push({ x: endPt.x, y: endPt.y, radius: 3, alpha: sig.intensity * 0.4, color: "255, 160, 40" });
+          signals.splice(s, 1);
+          continue;
+        }
+
+        // Get signal position
+        let pos: { x: number; y: number };
+        if (sig.branchIdx === -1) {
+          pos = getDendritePoint(n, d, sig.progress);
+        } else {
+          const br = d.branches[sig.branchIdx];
+          const brStart = getDendritePoint(n, d, br.t);
+          const bex = brStart.x + Math.cos(br.angle) * br.length;
+          const bey = brStart.y + Math.sin(br.angle) * br.length;
+          const bcx = brStart.x + Math.cos(br.angle + 0.2) * br.length * 0.5;
+          const bcy = brStart.y + Math.sin(br.angle + 0.2) * br.length * 0.5;
+          const mt = 1 - sig.progress;
+          pos = {
+            x: mt * mt * brStart.x + 2 * mt * sig.progress * bcx + sig.progress * sig.progress * bex,
+            y: mt * mt * brStart.y + 2 * mt * sig.progress * bcy + sig.progress * sig.progress * bey,
+          };
+        }
+
+        // Draw signal pulse — warm orange/gold
+        const pulseSize = (1 + n.z) * 2 * sig.intensity;
+        const outerGlow = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, pulseSize * 6);
+        outerGlow.addColorStop(0, `rgba(255, 160, 40, ${sig.intensity * 0.15})`);
+        outerGlow.addColorStop(0.5, `rgba(255, 100, 20, ${sig.intensity * 0.05})`);
+        outerGlow.addColorStop(1, `rgba(255, 60, 10, 0)`);
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, pulseSize * 6, 0, Math.PI * 2);
+        ctx.fillStyle = outerGlow;
+        ctx.fill();
+
+        // Core
+        const coreGlow = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, pulseSize);
+        coreGlow.addColorStop(0, `rgba(255, 220, 140, ${sig.intensity * 0.7})`);
+        coreGlow.addColorStop(1, `rgba(255, 140, 40, ${sig.intensity * 0.2})`);
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, pulseSize, 0, Math.PI * 2);
+        ctx.fillStyle = coreGlow;
+        ctx.fill();
+      }
+
+      // Draw glows (signal endpoints)
+      for (let g = glows.length - 1; g >= 0; g--) {
+        const gw = glows[g];
+        gw.radius += 0.4;
+        gw.alpha *= 0.94;
+        if (gw.alpha < 0.01) { glows.splice(g, 1); continue; }
+        const gg = ctx.createRadialGradient(gw.x, gw.y, 0, gw.x, gw.y, gw.radius * 3);
+        gg.addColorStop(0, `rgba(${gw.color}, ${gw.alpha})`);
+        gg.addColorStop(1, `rgba(${gw.color}, 0)`);
+        ctx.beginPath();
+        ctx.arc(gw.x, gw.y, gw.radius * 3, 0, Math.PI * 2);
+        ctx.fillStyle = gg;
+        ctx.fill();
+      }
+
+      // Draw neuron cell bodies (back to front)
+      for (const { n } of sorted) {
+        n.pulse += 0.015;
+        n.brightness += (0.1 + n.z * 0.1 - n.brightness) * 0.02;
+
+        const breathe = 1 + Math.sin(n.pulse) * 0.08;
+        const r = n.size * breathe;
+
+        // Outer atmosphere
+        const atmo = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r * 5);
+        atmo.addColorStop(0, `rgba(60, 120, 200, ${n.brightness * 0.2})`);
+        atmo.addColorStop(0.4, `rgba(40, 80, 160, ${n.brightness * 0.06})`);
+        atmo.addColorStop(1, `rgba(30, 60, 130, 0)`);
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r * 5, 0, Math.PI * 2);
+        ctx.fillStyle = atmo;
+        ctx.fill();
+
+        // Cell body
+        const body = ctx.createRadialGradient(n.x - r * 0.2, n.y - r * 0.2, 0, n.x, n.y, r);
+        body.addColorStop(0, `rgba(160, 210, 255, ${n.brightness * 0.8})`);
+        body.addColorStop(0.6, `rgba(80, 140, 220, ${n.brightness * 0.5})`);
+        body.addColorStop(1, `rgba(40, 80, 160, ${n.brightness * 0.15})`);
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = body;
+        ctx.fill();
+
+        // Nucleus highlight
+        ctx.beginPath();
+        ctx.arc(n.x - r * 0.15, n.y - r * 0.15, r * 0.35, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(210, 230, 255, ${n.brightness * 0.3})`;
+        ctx.fill();
+
+        // Fire glow (warm) when active
+        if (n.brightness > 0.25) {
+          const fireGlow = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, r * 3);
+          fireGlow.addColorStop(0, `rgba(255, 160, 60, ${(n.brightness - 0.25) * 0.2})`);
+          fireGlow.addColorStop(1, `rgba(255, 100, 30, 0)`);
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, r * 3, 0, Math.PI * 2);
+          ctx.fillStyle = fireGlow;
+          ctx.fill();
+        }
+      }
+
+      animId = requestAnimationFrame(draw);
+    };
+
+    // Initial fill
+    ctx.fillStyle = "#0c2240";
+    ctx.fillRect(0, 0, W, H);
+    draw();
+
+    return () => { cancelAnimationFrame(animId); window.removeEventListener("resize", resize); };
+  }, []);
+
+  return <canvas ref={canvasRef} style={{ position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none" }} />;
+}
+
+// ============================================================
 // Main App
 // ============================================================
 export default function NexusApp() {
@@ -273,19 +583,56 @@ export default function NexusApp() {
   const handleNav = (id: string) => { if (id === "review") { startReview(selectedTheme); return; } setSelectedTheme(null); setView(id); };
 
   return (
-    <div style={{ fontFamily: "'DM Sans', sans-serif", background: "#09090b", color: "#e4e4e7", minHeight: "100vh", display: "flex", overflow: "hidden" }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@700;800;900&display=swap" rel="stylesheet" />
-      <style>{`@keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } } button:hover { filter: brightness(1.1); }`}</style>
+    <div style={{ fontFamily: "'DM Sans', sans-serif", background: "#0c2240", color: "#e4e4e7", minHeight: "100vh", display: "flex", overflow: "hidden", position: "relative" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@700;800;900&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+      <style>{`
+        @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes auroraShift {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        @keyframes pulseGlow {
+          0%, 100% { box-shadow: 0 0 12px rgba(0,229,255,0.15), 0 0 40px rgba(0,229,255,0.05); }
+          50% { box-shadow: 0 0 20px rgba(0,229,255,0.25), 0 0 60px rgba(0,229,255,0.1); }
+        }
+        @keyframes logoPulse {
+          0%, 100% { box-shadow: 0 0 8px rgba(0,229,255,0.3), 0 0 24px rgba(124,77,255,0.15); }
+          50% { box-shadow: 0 0 16px rgba(0,229,255,0.5), 0 0 40px rgba(124,77,255,0.25); }
+        }
+        @keyframes scanline { from { transform: translateY(-100%); } to { transform: translateY(100vh); } }
+        @keyframes borderGlow {
+          0%, 100% { border-color: rgba(0,229,255,0.1); }
+          50% { border-color: rgba(0,229,255,0.25); }
+        }
+        button:hover { filter: brightness(1.15); }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.15); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0,229,255,0.3); }
+      `}</style>
+
+      {/* Neural particle background */}
+      <NeuralBackground />
+
+      {/* Aurora gradient overlay */}
+      <div style={{
+        position: "fixed", inset: 0, zIndex: 0, pointerEvents: "none", opacity: 0.35,
+        background: "radial-gradient(ellipse 80% 50% at 20% 40%, rgba(40,100,200,0.15) 0%, transparent 60%), radial-gradient(ellipse 60% 40% at 80% 60%, rgba(60,80,180,0.1) 0%, transparent 60%), radial-gradient(ellipse 50% 50% at 50% 100%, rgba(30,80,170,0.08) 0%, transparent 50%)",
+        backgroundSize: "200% 200%",
+        animation: "auroraShift 25s ease infinite",
+      }} />
 
       {/* Sidebar */}
-      <div style={{ width: sidebarOpen ? 220 : 60, minWidth: sidebarOpen ? 220 : 60, background: "#0c0c0f", borderRight: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", transition: "all 0.3s ease" }}>
+      <div style={{ width: sidebarOpen ? 220 : 60, minWidth: sidebarOpen ? 220 : 60, background: "rgba(10,28,52,0.85)", backdropFilter: "blur(20px)", borderRight: "1px solid rgba(0,229,255,0.06)", display: "flex", flexDirection: "column", transition: "all 0.3s ease", zIndex: 10, position: "relative" }}>
         <div style={{ padding: "24px 16px 32px", display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #00e5ff 0%, #7c4dff 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "#000", flexShrink: 0 }}>N</div>
-          {sidebarOpen && <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "-0.02em", background: "linear-gradient(135deg, #00e5ff, #7c4dff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>NEXUS</span>}
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #00e5ff 0%, #7c4dff 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "#000", flexShrink: 0, animation: "logoPulse 3s ease infinite" }}>N</div>
+          {sidebarOpen && <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "0.05em", fontFamily: "'Outfit', sans-serif", background: "linear-gradient(135deg, #00e5ff, #7c4dff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>NEXUS</span>}
         </div>
         <nav style={{ flex: 1, padding: "0 8px" }}>
           {navItems.map(item => (
-            <button key={item.id} onClick={() => handleNav(item.id)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "10px 12px", marginBottom: 2, background: view === item.id ? "rgba(0,229,255,0.08)" : "transparent", border: view === item.id ? "1px solid rgba(0,229,255,0.15)" : "1px solid transparent", borderRadius: 8, color: view === item.id ? "#00e5ff" : "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 13, fontWeight: 500, transition: "all 0.2s", textAlign: "left", fontFamily: "inherit" }}>
+            <button key={item.id} onClick={() => handleNav(item.id)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "10px 12px", marginBottom: 2, background: view === item.id ? "rgba(0,229,255,0.08)" : "transparent", border: view === item.id ? "1px solid rgba(0,229,255,0.15)" : "1px solid transparent", borderRadius: 8, color: view === item.id ? "#00e5ff" : "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 13, fontWeight: 500, transition: "all 0.3s", textAlign: "left", fontFamily: "inherit", boxShadow: view === item.id ? "0 0 16px rgba(0,229,255,0.08), inset 0 0 12px rgba(0,229,255,0.03)" : "none" }}>
               <span style={{ fontSize: 16, width: 20, textAlign: "center", flexShrink: 0 }}>{item.icon}</span>
               {sidebarOpen && item.label}
             </button>
@@ -301,8 +648,8 @@ export default function NexusApp() {
 
       {/* Search Overlay */}
       {searchOpen && (
-        <div onClick={(e) => { if (e.target === e.currentTarget) { setSearchOpen(false); setSearchQuery(""); setSearchResults(null); } }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)", zIndex: 100, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "15vh" }}>
-          <div style={{ width: "100%", maxWidth: 600, background: "#111114", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 16, overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.5)", animation: "fadeSlideIn 0.2s ease" }}>
+        <div onClick={(e) => { if (e.target === e.currentTarget) { setSearchOpen(false); setSearchQuery(""); setSearchResults(null); } }} style={{ position: "fixed", inset: 0, background: "rgba(6,18,36,0.75)", backdropFilter: "blur(16px)", zIndex: 100, display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "15vh" }}>
+          <div style={{ width: "100%", maxWidth: 600, background: "rgba(12,30,56,0.92)", border: "1px solid rgba(0,229,255,0.1)", borderRadius: 16, overflow: "hidden", boxShadow: "0 24px 80px rgba(0,0,0,0.6), 0 0 40px rgba(0,229,255,0.05)", animation: "fadeSlideIn 0.2s ease", backdropFilter: "blur(20px)" }}>
             {/* Search input */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <span style={{ fontSize: 18, color: "rgba(255,255,255,0.3)" }}>⌕</span>
@@ -390,7 +737,7 @@ export default function NexusApp() {
       )}
 
       {/* Main Content */}
-      <div style={{ flex: 1, overflow: "auto", padding: "32px 40px", opacity: animateIn ? 1 : 0, transform: animateIn ? "translateY(0)" : "translateY(12px)", transition: "opacity 0.4s ease, transform 0.4s ease" }}>
+      <div style={{ flex: 1, overflow: "auto", padding: "32px 40px", opacity: animateIn ? 1 : 0, transform: animateIn ? "translateY(0)" : "translateY(12px)", transition: "opacity 0.4s ease, transform 0.4s ease", position: "relative", zIndex: 5 }}>
         {loading && <Spinner />}
         {error && <div style={{ padding: 40, color: "#ff4081" }}>Error: {error}</div>}
         {!loading && !error && <>
@@ -422,7 +769,7 @@ function DashboardView({ themeStats, sources, claims, dueCards, onThemeClick, on
   return (
     <div>
       <div style={{ marginBottom: 40 }}>
-        <h1 style={{ fontSize: 36, fontWeight: 800, margin: 0, letterSpacing: "-0.03em", fontFamily: "'Playfair Display', serif", background: "linear-gradient(135deg, #e4e4e7 30%, rgba(228,228,231,0.5))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Knowledge Dashboard</h1>
+        <h1 style={{ fontSize: 36, fontWeight: 800, margin: 0, letterSpacing: "-0.03em", fontFamily: "'Outfit', sans-serif", background: "linear-gradient(135deg, #e4e4e7 30%, rgba(228,228,231,0.5))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", textShadow: "0 0 40px rgba(0,229,255,0.15)" }}>Knowledge Dashboard</h1>
         <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginTop: 8 }}>{sources.length} sources · {claims.length} tracked claims · {dueCards.length} due for review</p>
       </div>
       {/* Stats */}
@@ -433,7 +780,7 @@ function DashboardView({ themeStats, sources, claims, dueCards, onThemeClick, on
           { label: "Active Debates", value: <span style={{ fontSize: 28, fontWeight: 700, color: "#ff4081", fontFamily: "'JetBrains Mono'" }}>{contested}</span>, sub: "contradictions found" },
           { label: "Due for Review", value: <button onClick={onStartReview} disabled={dueCards.length === 0} style={{ fontSize: 28, fontWeight: 700, fontFamily: "'JetBrains Mono'", color: dueCards.length > 0 ? "#ffd600" : "rgba(255,255,255,0.3)", background: dueCards.length > 0 ? "rgba(255,214,0,0.1)" : "transparent", border: dueCards.length > 0 ? "1px solid rgba(255,214,0,0.2)" : "none", borderRadius: 8, padding: "4px 16px", cursor: dueCards.length > 0 ? "pointer" : "default" }}>{dueCards.length}</button>, sub: "start session →" },
         ].map((stat: any, i: number) => (
-          <div key={i} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "20px 24px" }}>
+          <div key={i} style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(0,229,255,0.06)", borderRadius: 12, padding: "20px 24px", backdropFilter: "blur(8px)", boxShadow: "0 4px 24px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03)", transition: "all 0.3s" }}>
             <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.35)", marginBottom: 12, fontWeight: 600 }}>{stat.label}</div>
             <div style={{ marginBottom: 6 }}>{stat.value}</div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)" }}>{stat.sub}</div>
@@ -447,7 +794,7 @@ function DashboardView({ themeStats, sources, claims, dueCards, onThemeClick, on
           {themeStats.map((theme: any, i: number) => {
             const due = claims.filter((c: any) => c.themes.includes(theme.name) && new Date(c.card.due) <= new Date()).length;
             return (
-              <button key={theme.name} onClick={() => onThemeClick(theme.name)} style={{ background: `linear-gradient(135deg, ${theme.bg} 0%, rgba(12,12,15,0.95) 100%)`, border: `1px solid ${theme.accent}22`, borderRadius: 12, padding: "20px 24px", cursor: "pointer", textAlign: "left", transition: "all 0.3s", position: "relative", overflow: "hidden", fontFamily: "inherit", animation: `fadeSlideIn 0.4s ease ${i * 0.08}s both` }}>
+              <button key={theme.name} onClick={() => onThemeClick(theme.name)} style={{ background: `linear-gradient(135deg, ${theme.bg} 0%, rgba(12,12,15,0.95) 100%)`, border: `1px solid ${theme.accent}22`, borderRadius: 12, padding: "20px 24px", cursor: "pointer", textAlign: "left", transition: "all 0.3s", position: "relative", overflow: "hidden", fontFamily: "inherit", animation: `fadeSlideIn 0.4s ease ${i * 0.08}s both`, boxShadow: `0 4px 24px rgba(0,0,0,0.2), 0 0 0 0 ${theme.accent}00`, backdropFilter: "blur(8px)" }} onMouseEnter={(e: any) => { e.currentTarget.style.boxShadow = `0 8px 32px rgba(0,0,0,0.3), 0 0 20px ${theme.accent}15`; e.currentTarget.style.borderColor = `${theme.accent}44`; }} onMouseLeave={(e: any) => { e.currentTarget.style.boxShadow = `0 4px 24px rgba(0,0,0,0.2)`; e.currentTarget.style.borderColor = `${theme.accent}22`; }}>
                 <div style={{ position: "absolute", top: 0, right: 0, width: 120, height: 120, background: `radial-gradient(circle at top right, ${theme.accent}08, transparent)` }} />
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
                   <div><span style={{ fontSize: 22, marginRight: 10 }}>{theme.icon}</span><span style={{ fontSize: 16, fontWeight: 600, color: "#e4e4e7" }}>{theme.name}</span></div>
@@ -499,11 +846,11 @@ function ThemeDetailView({ theme, sources, claims, FSRS, onBack, onStartReview, 
   return (
     <div>
       <button onClick={onBack} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 13, marginBottom: 20, padding: 0, fontFamily: "inherit" }}>← Back to Dashboard</button>
-      <div style={{ background: `linear-gradient(135deg, ${colors.bg}, #09090b)`, border: `1px solid ${colors.accent}22`, borderRadius: 16, padding: "32px 36px", marginBottom: 32, position: "relative", overflow: "hidden" }}>
+      <div style={{ background: `linear-gradient(135deg, ${colors.bg}, #0e2848)`, border: `1px solid ${colors.accent}22`, borderRadius: 16, padding: "32px 36px", marginBottom: 32, position: "relative", overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
             <span style={{ fontSize: 36, marginRight: 16 }}>{colors.icon}</span>
-            <span style={{ fontSize: 32, fontWeight: 800, fontFamily: "'Playfair Display', serif", background: `linear-gradient(135deg, #e4e4e7, ${colors.accent})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{theme}</span>
+            <span style={{ fontSize: 32, fontWeight: 800, fontFamily: "'Outfit', sans-serif", background: `linear-gradient(135deg, #e4e4e7, ${colors.accent})`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{theme}</span>
             <div style={{ marginTop: 12, display: "flex", gap: 20, fontSize: 13, color: "rgba(255,255,255,0.4)" }}>
               <span>{ts.length} sources</span><span>{tClaims.length} claims</span><span>{consensus.length} consensus</span>
               {contested.length > 0 && <span style={{ color: "#ff4081" }}>⚡ {contested.length} debated</span>}
@@ -575,7 +922,7 @@ function LibraryView({ sources, claims, selectedSource, onSelectSource, tc }: an
 
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 8px", letterSpacing: "-0.03em", fontFamily: "'Playfair Display', serif" }}>Content Library</h1>
+      <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 8px", letterSpacing: "-0.03em", fontFamily: "'Outfit', sans-serif" }}>Content Library</h1>
       <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginBottom: 28 }}>{sources.length} items</p>
       <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
         {["all", "podcast", "paper", "article", "book"].map(type => (
@@ -619,7 +966,7 @@ function ClaimsView({ claims, sources, FSRS, tc }: any) {
 
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 8px", letterSpacing: "-0.03em", fontFamily: "'Playfair Display', serif" }}>Claims Database</h1>
+      <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 8px", letterSpacing: "-0.03em", fontFamily: "'Outfit', sans-serif" }}>Claims Database</h1>
       <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginBottom: 28 }}>{claims.length} discrete claims tracked</p>
       <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
         {["confidence", "retention", "status"].map(s => (
@@ -660,7 +1007,7 @@ function IngestView({ url, setUrl, step, onSubmit, statusMessage }: any) {
   const steps = ["Submitting...", "Fetching content...", "Extracting text...", "AI processing claims...", "Building knowledge graph...", "Complete!"];
   return (
     <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 8px", letterSpacing: "-0.03em", fontFamily: "'Playfair Display', serif" }}>Add Content</h1>
+      <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 8px", letterSpacing: "-0.03em", fontFamily: "'Outfit', sans-serif" }}>Add Content</h1>
       <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginBottom: 12 }}>Paste a paper DOI, article URL, or web link</p>
       <p style={{ color: "rgba(255,255,255,0.25)", fontSize: 12, marginBottom: 32 }}>💡 For podcasts, use: <code style={{ color: "#00e5ff", background: "rgba(0,229,255,0.06)", padding: "2px 6px", borderRadius: 4 }}>npx tsx scripts/ingest-podcast.ts "YOUTUBE_URL"</code></p>
       <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16, padding: "32px 36px", maxWidth: 640, marginBottom: 32 }}>
@@ -1060,7 +1407,7 @@ function GraphView({ claims, sources, themeStats, tc, FSRS }: any) {
 
         {/* Legend + Filter */}
         <div style={{ position: "absolute", top: 20, left: 20, background: "rgba(9,9,11,0.9)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: "16px 20px", backdropFilter: "blur(12px)" }}>
-          <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 12px", fontFamily: "'Playfair Display', serif", background: "linear-gradient(135deg, #00e5ff, #7c4dff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Knowledge Graph</h2>
+          <h2 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 12px", fontFamily: "'Outfit', sans-serif", background: "linear-gradient(135deg, #00e5ff, #7c4dff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Knowledge Graph</h2>
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
             {[{ label: "Theme", color: "#00e5ff", r: 10 }, { label: "Claim", color: "#888", r: 7 }, { label: "Source", color: "#555", r: 4 }].map(item => (
               <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 11, color: "rgba(255,255,255,0.5)" }}>
@@ -1095,7 +1442,7 @@ function GraphView({ claims, sources, themeStats, tc, FSRS }: any) {
 
       {/* Detail Panel */}
       {(selected || hovered) && (
-        <div style={{ width: 320, background: "#0c0c0f", borderLeft: "1px solid rgba(255,255,255,0.06)", padding: "24px 20px", overflow: "auto", animation: "fadeSlideIn 0.2s ease" }}>
+        <div style={{ width: 320, background: "#0d2544", borderLeft: "1px solid rgba(255,255,255,0.06)", padding: "24px 20px", overflow: "auto", animation: "fadeSlideIn 0.2s ease" }}>
           {(() => {
             const node = selected || hovered;
             if (!node) return null;
@@ -1251,7 +1598,7 @@ function AnalyticsView({ tc }: any) {
 
   return (
     <div>
-      <h1 style={{ fontSize: 36, fontWeight: 800, margin: 0, letterSpacing: "-0.03em", fontFamily: "'Playfair Display', serif", background: "linear-gradient(135deg, #e4e4e7 30%, rgba(228,228,231,0.5))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Analytics</h1>
+      <h1 style={{ fontSize: 36, fontWeight: 800, margin: 0, letterSpacing: "-0.03em", fontFamily: "'Outfit', sans-serif", background: "linear-gradient(135deg, #e4e4e7 30%, rgba(228,228,231,0.5))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", textShadow: "0 0 40px rgba(0,229,255,0.15)" }}>Analytics</h1>
       <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginTop: 8, marginBottom: 32 }}>Your learning performance and knowledge growth</p>
 
       {/* Top stats */}
@@ -1388,7 +1735,7 @@ function AnalyticsView({ tc }: any) {
                     const x2 = 60 + 45 * Math.cos(endRad), y2 = 60 + 45 * Math.sin(endRad);
                     return <path key={i} d={`M 60 60 L ${x1} ${y1} A 45 45 0 ${largeArc} 1 ${x2} ${y2} Z`} fill={ratingColors[i]} opacity={0.8} />;
                   })}
-                  <circle cx={60} cy={60} r={28} fill="#111114" />
+                  <circle cx={60} cy={60} r={28} fill="#13304e" />
                   <text x={60} y={56} textAnchor="middle" fill="#e4e4e7" fontSize={16} fontWeight={700} fontFamily="'JetBrains Mono'">{ratingDistribution.total}</text>
                   <text x={60} y={70} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize={8}>REVIEWS</text>
                 </svg>
@@ -1640,7 +1987,7 @@ function TablesView({ tc }: any) {
       <div style={{ padding: "20px 28px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, fontFamily: "'Playfair Display', serif", background: "linear-gradient(135deg, #e4e4e7 30%, rgba(228,228,231,0.5))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Data Tables</h1>
+            <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, fontFamily: "'Outfit', sans-serif", background: "linear-gradient(135deg, #e4e4e7 30%, rgba(228,228,231,0.5))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Data Tables</h1>
             <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, margin: "6px 0 0" }}>Generate structured comparisons from your knowledge base</p>
           </div>
           {tables.length > 0 && (
@@ -1899,7 +2246,7 @@ function ChatView({ tc }: any) {
     <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 64px)", margin: "-32px -40px", padding: 0 }}>
       {/* Header */}
       <div style={{ padding: "20px 28px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
-        <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, fontFamily: "'Playfair Display', serif", background: "linear-gradient(135deg, #e4e4e7 30%, rgba(228,228,231,0.5))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Research Chat</h1>
+        <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, fontFamily: "'Outfit', sans-serif", background: "linear-gradient(135deg, #e4e4e7 30%, rgba(228,228,231,0.5))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Research Chat</h1>
         <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, margin: "6px 0 0" }}>Ask questions about your knowledge base — answers are grounded in your sources</p>
       </div>
 
