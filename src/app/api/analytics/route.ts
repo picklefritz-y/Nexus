@@ -9,6 +9,7 @@ import type { FSRSCard } from "@/types";
 const MVP_USER_ID = "user_mvp";
 
 export async function GET(request: NextRequest) {
+  try {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 86400000);
@@ -252,4 +253,8 @@ export async function GET(request: NextRequest) {
       hardClaims,
     },
   });
+  } catch (err: any) {
+    console.error("Analytics API error:", err);
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
 }

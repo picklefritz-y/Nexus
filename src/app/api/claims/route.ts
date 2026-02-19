@@ -7,6 +7,7 @@ import prisma from "@/lib/prisma";
 const MVP_USER_ID = "user_mvp";
 
 export async function GET(request: NextRequest) {
+  try {
   const { searchParams } = new URL(request.url);
   const themeId = searchParams.get("themeId");
   const status = searchParams.get("status");
@@ -66,4 +67,8 @@ export async function GET(request: NextRequest) {
   });
 
   return NextResponse.json({ success: true, data: claims });
+  } catch (err: any) {
+    console.error("Claims API error:", err);
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
 }

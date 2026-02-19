@@ -9,6 +9,7 @@ import type { FSRSCard } from "@/types";
 const MVP_USER_ID = "user_mvp";
 
 export async function GET(request: NextRequest) {
+  try {
   // Parallel queries for dashboard data
   const [
     sourceCount,
@@ -200,4 +201,8 @@ export async function GET(request: NextRequest) {
       reviewActivity: reviewsByDay,
     },
   });
+  } catch (err: any) {
+    console.error("Dashboard API error:", err);
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
 }

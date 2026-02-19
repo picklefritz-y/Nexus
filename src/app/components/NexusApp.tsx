@@ -128,9 +128,9 @@ export default function NexusApp() {
     try {
       setLoading(true); setError(null);
       const [dashRes, contentRes, claimsRes] = await Promise.all([
-        fetch("/api/dashboard").then(r => r.json()),
-        fetch("/api/content").then(r => r.json()),
-        fetch("/api/claims").then(r => r.json()),
+        fetch("/api/dashboard").then(r => r.ok ? r.json() : { success: false }),
+        fetch("/api/content").then(r => r.ok ? r.json() : { success: false }),
+        fetch("/api/claims").then(r => r.ok ? r.json() : { success: false }),
       ]);
       if (contentRes.success && contentRes.data) setSources((Array.isArray(contentRes.data) ? contentRes.data : []).map(transformSource));
       if (claimsRes.success && claimsRes.data) setClaims((Array.isArray(claimsRes.data) ? claimsRes.data : []).map(transformClaim));
@@ -1194,7 +1194,7 @@ function AnalyticsView({ tc }: any) {
   const [retentionTheme, setRetentionTheme] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/analytics").then(r => r.json()).then(d => { if (d.success) setData(d.data); }).catch(() => {}).finally(() => setLoading(false));
+    fetch("/api/analytics").then(r => r.ok ? r.json() : { success: false }).then(d => { if (d.success) setData(d.data); }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   if (loading) return <Spinner />;

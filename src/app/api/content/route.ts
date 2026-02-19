@@ -7,6 +7,7 @@ import prisma from "@/lib/prisma";
 const MVP_USER_ID = "user_mvp";
 
 export async function GET(request: NextRequest) {
+  try {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type");
   const themeId = searchParams.get("themeId");
@@ -48,4 +49,8 @@ export async function GET(request: NextRequest) {
     data: sources,
     pagination: { total, limit, offset },
   });
+  } catch (err: any) {
+    console.error("Content API error:", err);
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+  }
 }
