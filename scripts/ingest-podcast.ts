@@ -6,6 +6,9 @@
 import { PrismaClient } from "@prisma/client";
 import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
+import { execSync } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
 
 dotenv.config();
 
@@ -28,11 +31,55 @@ function logDetail(message: string) {
   console.log(`  → ${message}`);
 }
 
-// --- Step 1: Transcribe with AssemblyAI ---
+// --- Step 1: Download audio with yt-dlp, then transcribe with AssemblyAI ---
 
 async function transcribe(url: string) {
-  log("📡 STEP 1: TRANSCRIPTION", `Submitting to AssemblyAI: ${url}`);
+  log("📡 STEP 1: TRANSCRIPTION", `Processing: ${url}`);
 
+  // Download audio with yt-dlp
+  const audioDir = path.join(process.cwd(), "audio");
+  if (!fs.existsSync(audioDir)) fs.mkdirSync(audioDir, { recursive: true });
+  const audioPath = path.join(audioDir, `podcast-${Date.now()}.m4a`);
+
+  logDetail("Downloading audio with yt-dlp...");
+  try {
+    execSync(`yt-dlp -f "bestaudio[ext=m4a]/bestaudio" -o "${audioPath}" --no-playlist "${url}"`, {
+      stdio: ["pipe", "pipe", "pipe"],
+      timeout: 600000, // 10 minute timeout
+    });
+  } catch (e: any) {
+    throw new Error(`yt-dlp download failed: ${e.message}`);
+  }
+
+  if (!fs.existsSync(audioPath) || fs.statSync(audioPath).size === 0) {
+    throw new Error("yt-dlp produced no audio file");
+  }
+  const sizeMB = (fs.statSync(audioPath).size / 1048576).toFixed(1);
+  logDetail(`✅ Audio downloaded: ${sizeMB} MB`);
+
+  // Upload to AssemblyAI
+  logDetail("Uploading audio to AssemblyAI...");
+  const audioData = fs.readFileSync(audioPath);
+  const uploadResponse = await fetch(`${ASSEMBLYAI_BASE}/upload`, {
+    method: "POST",
+    headers: {
+      Authorization: ASSEMBLYAI_KEY,
+      "Content-Type": "application/octet-stream",
+    },
+    body: audioData,
+  });
+
+  if (!uploadResponse.ok) {
+    throw new Error(`AssemblyAI upload failed: ${uploadResponse.status}`);
+  }
+  const { upload_url } = await uploadResponse.json();
+  logDetail(`✅ Audio uploaded to AssemblyAI`);
+
+  // Clean up local file
+  fs.unlinkSync(audioPath);
+
+  // Submit for transcription
+  logDetail("Submitting for transcription...");
   const submitResponse = await fetch(`${ASSEMBLYAI_BASE}/transcript`, {
     method: "POST",
     headers: {
@@ -40,7 +87,9 @@ async function transcribe(url: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      audio_url: url,
+      audio_url: upload_url,
+      speech_models: ["universal-3-pro"],
+
       auto_chapters: true,
       speaker_labels: true,
       iab_categories: true,

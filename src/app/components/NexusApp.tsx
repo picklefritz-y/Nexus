@@ -250,6 +250,7 @@ export default function NexusApp() {
 
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: "◆" },
+    { id: "chat", label: "Chat", icon: "◬" },
     { id: "graph", label: "Graph", icon: "◉" },
     { id: "analytics", label: "Analytics", icon: "▦" },
     { id: "library", label: "Library", icon: "◫" },
@@ -388,6 +389,7 @@ export default function NexusApp() {
           {view === "claims" && <ClaimsView claims={claims} sources={sources} FSRS={FSRS} tc={tc} />}
           {view === "graph" && <GraphView claims={claims} sources={sources} themeStats={themeStats} tc={tc} FSRS={FSRS} />}
           {view === "analytics" && <AnalyticsView tc={tc} />}
+          {view === "chat" && <ChatView tc={tc} />}
           {view === "ingest" && <IngestView url={ingestUrl} setUrl={setIngestUrl} step={ingestStep} onSubmit={handleIngest} statusMessage={ingestStatus} />}
           {view === "review" && reviewQueue.length > 0 && <ReviewView claim={reviewQueue[currentReviewIndex]} index={currentReviewIndex} total={reviewQueue.length} showAnswer={showAnswer} onReveal={() => setShowAnswer(true)} onRate={handleRating} sources={sources} claims={claims} FSRS={FSRS} tc={tc} />}
         </>}
@@ -1444,6 +1446,240 @@ function AnalyticsView({ tc }: any) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ============================================================
+// Chat View — Research Assistant
+// ============================================================
+interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  context?: { claimsFound: number; sourcesFound: number; claims: any[]; sources: any[] };
+  timestamp: Date;
+}
+
+function ChatView({ tc }: any) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showContext, setShowContext] = useState<number | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleSend = async () => {
+    const trimmed = input.trim();
+    if (!trimmed || loading) return;
+
+    const userMsg: ChatMessage = { role: "user", content: trimmed, timestamp: new Date() };
+    setMessages((prev: ChatMessage[]) => [...prev, userMsg]);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const history = messages.map((m: ChatMessage) => ({ role: m.role, content: m.content }));
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: trimmed, history }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        const assistantMsg: ChatMessage = {
+          role: "assistant",
+          content: data.data.message,
+          context: data.data.context,
+          timestamp: new Date(),
+        };
+        setMessages((prev: ChatMessage[]) => [...prev, assistantMsg]);
+      } else {
+        setMessages((prev: ChatMessage[]) => [...prev, { role: "assistant", content: `Error: ${data.error}`, timestamp: new Date() }]);
+      }
+    } catch (err: any) {
+      setMessages((prev: ChatMessage[]) => [...prev, { role: "assistant", content: `Error: ${err.message}`, timestamp: new Date() }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  };
+
+  const formatMessage = (content: string) => {
+    // Format citation references like [CLAIM 1], [SOURCE 2]
+    const parts = content.split(/(\[(?:CLAIM|SOURCE)\s+\d+\])/g);
+    return parts.map((part: string, i: number) => {
+      const claimMatch = part.match(/\[CLAIM\s+(\d+)\]/);
+      const sourceMatch = part.match(/\[SOURCE\s+(\d+)\]/);
+      if (claimMatch) {
+        return <span key={i} style={{ display: "inline-block", padding: "0 5px", borderRadius: 4, background: "rgba(124,77,255,0.15)", color: "#b388ff", fontSize: "0.85em", fontWeight: 600, cursor: "default" }}>{part}</span>;
+      }
+      if (sourceMatch) {
+        return <span key={i} style={{ display: "inline-block", padding: "0 5px", borderRadius: 4, background: "rgba(0,229,255,0.12)", color: "#00e5ff", fontSize: "0.85em", fontWeight: 600, cursor: "default" }}>{part}</span>;
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  const suggestedQuestions = [
+    "What are the key claims across all my sources?",
+    "Are there any contradictions in my knowledge base?",
+    "Summarize what I know about the most common theme",
+    "What are the highest confidence findings?",
+    "What gaps exist in my research?",
+  ];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 64px)", margin: "-32px -40px", padding: 0 }}>
+      {/* Header */}
+      <div style={{ padding: "20px 28px", borderBottom: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
+        <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, fontFamily: "'Playfair Display', serif", background: "linear-gradient(135deg, #e4e4e7 30%, rgba(228,228,231,0.5))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Research Chat</h1>
+        <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 13, margin: "6px 0 0" }}>Ask questions about your knowledge base — answers are grounded in your sources</p>
+      </div>
+
+      {/* Messages */}
+      <div style={{ flex: 1, overflow: "auto", padding: "20px 28px" }}>
+        {messages.length === 0 && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", gap: 24 }}>
+            <div style={{ fontSize: 48, opacity: 0.15 }}>◬</div>
+            <div style={{ textAlign: "center", maxWidth: 420 }}>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>Ask anything about your research</div>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.25)", lineHeight: 1.6 }}>Your chat is grounded in {" "} the claims and sources in your knowledge base. Answers include citations so you can trace every statement back to its origin.</div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, width: "100%", maxWidth: 420 }}>
+              {suggestedQuestions.map((q: string, i: number) => (
+                <button key={i} onClick={() => { setInput(q); inputRef.current?.focus(); }} style={{ padding: "10px 16px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, color: "rgba(255,255,255,0.45)", fontSize: 13, cursor: "pointer", textAlign: "left", fontFamily: "inherit", transition: "all 0.15s" }} onMouseEnter={(e: any) => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)"; }} onMouseLeave={(e: any) => { e.currentTarget.style.background = "rgba(255,255,255,0.02)"; e.currentTarget.style.borderColor = "rgba(255,255,255,0.06)"; }}>
+                  {q}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((msg: ChatMessage, i: number) => (
+          <div key={i} style={{ marginBottom: 24, animation: "fadeSlideIn 0.3s ease" }}>
+            {/* Role label */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, flexShrink: 0,
+                background: msg.role === "user" ? "rgba(255,255,255,0.08)" : "linear-gradient(135deg, #00e5ff, #7c4dff)",
+                color: msg.role === "user" ? "rgba(255,255,255,0.5)" : "#000",
+              }}>
+                {msg.role === "user" ? "Y" : "N"}
+              </div>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>{msg.role === "user" ? "You" : "Nexus"}</span>
+              <span style={{ fontSize: 10, color: "rgba(255,255,255,0.15)" }}>{msg.timestamp.toLocaleTimeString()}</span>
+            </div>
+
+            {/* Message content */}
+            <div style={{
+              marginLeft: 36, fontSize: 14, lineHeight: 1.7, color: msg.role === "user" ? "rgba(255,255,255,0.7)" : "#e4e4e7",
+              ...(msg.role === "user" ? { padding: "12px 16px", background: "rgba(255,255,255,0.03)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)" } : {}),
+            }}>
+              {msg.role === "user" ? msg.content : formatMessage(msg.content)}
+            </div>
+
+            {/* Context panel for assistant messages */}
+            {msg.role === "assistant" && msg.context && (msg.context.claimsFound > 0 || msg.context.sourcesFound > 0) && (
+              <div style={{ marginLeft: 36, marginTop: 8 }}>
+                <button onClick={() => setShowContext(showContext === i ? null : i)} style={{ padding: "4px 10px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 6, color: "rgba(255,255,255,0.3)", fontSize: 11, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 9, transform: showContext === i ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.2s" }}>▶</span>
+                  {msg.context.claimsFound} claims · {msg.context.sourcesFound} sources referenced
+                </button>
+
+                {showContext === i && (
+                  <div style={{ marginTop: 8, padding: "12px 16px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, animation: "fadeSlideIn 0.2s ease" }}>
+                    {msg.context.claims.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(124,77,255,0.6)", marginBottom: 6 }}>Claims Referenced</div>
+                        {msg.context.claims.map((c: any, ci: number) => (
+                          <div key={ci} style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 6, paddingLeft: 10, borderLeft: "2px solid rgba(124,77,255,0.2)" }}>
+                            <span style={{ color: "#b388ff", fontWeight: 600, marginRight: 4 }}>[{ci + 1}]</span>
+                            {c.text}...
+                            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.25)", marginLeft: 6 }}>{c.status} · {Math.round((c.confidence || 0.5) * 100)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {msg.context.sources.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(0,229,255,0.6)", marginBottom: 6 }}>Sources Referenced</div>
+                        {msg.context.sources.map((s: any, si: number) => (
+                          <div key={si} style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", marginBottom: 4, paddingLeft: 10, borderLeft: "2px solid rgba(0,229,255,0.2)" }}>
+                            <span style={{ color: "#00e5ff", fontWeight: 600, marginRight: 4 }}>[{si + 1}]</span>
+                            {SOURCE_ICONS[(s.type || "").toLowerCase()] || "📝"} {s.title}
+                            <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)", marginLeft: 4 }}>— {s.author || "Unknown"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+
+        {loading && (
+          <div style={{ marginBottom: 24, animation: "fadeSlideIn 0.3s ease" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: 8, background: "linear-gradient(135deg, #00e5ff, #7c4dff)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#000" }}>N</div>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.4)" }}>Nexus</span>
+            </div>
+            <div style={{ marginLeft: 36, display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ width: 14, height: 14, borderRadius: "50%", border: "2px solid rgba(0,229,255,0.2)", borderTopColor: "#00e5ff", animation: "spin 0.8s linear infinite", display: "inline-block" }} />
+              <span style={{ fontSize: 13, color: "rgba(255,255,255,0.3)" }}>Searching your knowledge base...</span>
+            </div>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{ padding: "16px 28px 20px", borderTop: "1px solid rgba(255,255,255,0.06)", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", maxWidth: 800 }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e: any) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask about your research..."
+            rows={input.split("\n").length > 3 ? 4 : input.includes("\n") ? 2 : 1}
+            style={{
+              flex: 1, padding: "12px 16px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)",
+              borderRadius: 12, color: "#e4e4e7", fontSize: 14, fontFamily: "inherit", resize: "none", outline: "none",
+              lineHeight: 1.5, transition: "border-color 0.2s",
+            }}
+            onFocus={(e: any) => e.target.style.borderColor = "rgba(0,229,255,0.3)"}
+            onBlur={(e: any) => e.target.style.borderColor = "rgba(255,255,255,0.1)"}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || loading}
+            style={{
+              padding: "12px 20px", borderRadius: 12, border: "none", fontFamily: "inherit", fontSize: 14, fontWeight: 600, cursor: input.trim() && !loading ? "pointer" : "default",
+              background: input.trim() && !loading ? "linear-gradient(135deg, #00e5ff, #7c4dff)" : "rgba(255,255,255,0.05)",
+              color: input.trim() && !loading ? "#000" : "rgba(255,255,255,0.2)",
+              transition: "all 0.2s", flexShrink: 0,
+            }}
+          >
+            Send
+          </button>
+        </div>
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.15)", marginTop: 8, maxWidth: 800 }}>
+          Shift+Enter for new line · Responses cite your claims and sources
+        </div>
+      </div>
     </div>
   );
 }
