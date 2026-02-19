@@ -1479,6 +1479,7 @@ function TablesView({ tc }: any) {
   const [activeTable, setActiveTable] = useState<number>(0);
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
+  const [progressMsg, setProgressMsg] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -1491,6 +1492,7 @@ function TablesView({ tc }: any) {
     if (!trimmed || loading) return;
     setLoading(true);
     setError(null);
+    setProgressMsg("Starting...");
 
     try {
       const res = await fetch("/api/tables/generate", {
@@ -1498,20 +1500,57 @@ function TablesView({ tc }: any) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: trimmed }),
       });
-      const data = res.ok ? await res.json() : { success: false, error: "Server error" };
 
-      if (data.success) {
-        setTables((prev: TableData[]) => [...prev, data.data]);
-        setActiveTable(tables.length);
-        setPrompt("");
-        setSortCol(null);
-      } else {
-        setError(data.error || "Failed to generate table");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: "Server error" }));
+        setError(errData.error || "Server error");
+        setLoading(false);
+        return;
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) { setError("No response stream"); setLoading(false); return; }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        let eventType = "";
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith("data: ") && eventType) {
+            try {
+              const payload = JSON.parse(line.slice(6));
+              if (eventType === "progress") {
+                setProgressMsg(payload.step || "Processing...");
+              } else if (eventType === "chunk") {
+                setProgressMsg(`Generating table... (${payload.length} chars)`);
+              } else if (eventType === "done" && payload.success) {
+                setTables((prev: TableData[]) => [...prev, payload.data]);
+                setActiveTable(tables.length);
+                setPrompt("");
+                setSortCol(null);
+              } else if (eventType === "error") {
+                setError(payload.message || "Unknown error");
+              }
+            } catch { /* skip malformed JSON */ }
+            eventType = "";
+          }
+        }
       }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+      setProgressMsg("");
     }
   };
 
@@ -1654,7 +1693,7 @@ function TablesView({ tc }: any) {
         {loading && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60%", gap: 16 }}>
             <span style={{ width: 28, height: 28, borderRadius: "50%", border: "2px solid rgba(0,229,255,0.2)", borderTopColor: "#00e5ff", animation: "spin 0.8s linear infinite", display: "inline-block" }} />
-            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.3)" }}>Searching knowledge base & generating table...</div>
+            <div style={{ fontSize: 14, color: "rgba(255,255,255,0.3)" }}>{progressMsg || "Searching knowledge base & generating table..."}</div>
             <div style={{ fontSize: 12, color: "rgba(255,255,255,0.15)" }}>This takes 10–20 seconds</div>
           </div>
         )}
