@@ -917,41 +917,186 @@ function ClaimCard({ claim, FSRS, accentColor, claims }: any) {
 function LibraryView({ sources, claims, selectedSource, onSelectSource, tc }: any) {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [sourceDetail, setSourceDetail] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(false);
   const filtered = sources.filter((s: any) => { if (filter !== "all" && s.type !== filter) return false; if (search && !s.title.toLowerCase().includes(search.toLowerCase()) && !s.author.toLowerCase().includes(search.toLowerCase())) return false; return true; });
   const grouped = groupBy(filtered, (s: any) => { const diff = (Date.now() - new Date(s.date).getTime()) / 86400000; if (diff < 7) return "This Week"; if (diff < 30) return "This Month"; return "Earlier"; });
 
+  const handleSelectSource = async (s: any) => {
+    if (selectedSource?.id === s.id) {
+      onSelectSource(null);
+      setSourceDetail(null);
+      setShowTranscript(false);
+      return;
+    }
+    onSelectSource(s);
+    setSourceDetail(null);
+    setShowTranscript(false);
+    setDetailLoading(true);
+    try {
+      const res = await fetch(`/api/content/${s.id}`);
+      const data = res.ok ? await res.json() : null;
+      if (data?.success) setSourceDetail(data.data);
+    } catch (_e) { /* ignore */ }
+    setDetailLoading(false);
+  };
+
+  const detailClaims = sourceDetail?.claims?.map((cs: any) => ({
+    ...cs.claim,
+    supportingQuote: cs.extractedText || "",
+  })) || [];
+
+  const keyTakeaways = sourceDetail?.keyTakeaways ? (() => {
+    try { return JSON.parse(sourceDetail.keyTakeaways); } catch { return []; }
+  })() : [];
+
   return (
-    <div>
-      <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 8px", letterSpacing: "-0.03em", fontFamily: "'Outfit', sans-serif" }}>Content Library</h1>
-      <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginBottom: 28 }}>{sources.length} items</p>
-      <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
-        {["all", "podcast", "paper", "article", "book"].map(type => (
-          <button key={type} onClick={() => setFilter(type)} style={{ padding: "6px 16px", borderRadius: 20, fontSize: 12, fontWeight: 500, background: filter === type ? "rgba(0,229,255,0.12)" : "rgba(255,255,255,0.04)", border: filter === type ? "1px solid rgba(0,229,255,0.3)" : "1px solid rgba(255,255,255,0.08)", color: filter === type ? "#00e5ff" : "rgba(255,255,255,0.5)", cursor: "pointer", fontFamily: "inherit" }}>
-            {type === "all" ? "All" : `${SOURCE_ICONS[type] || "📝"} ${type.charAt(0).toUpperCase() + type.slice(1)}s`}
-          </button>
-        ))}
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ marginLeft: "auto", padding: "6px 16px", borderRadius: 20, fontSize: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#e4e4e7", outline: "none", width: 200, fontFamily: "inherit" }} />
-      </div>
-      {Object.entries(grouped).map(([period, items]: [string, any]) => (
-        <div key={period} style={{ marginBottom: 28 }}>
-          <h3 style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", marginBottom: 10, fontWeight: 600 }}>{period}</h3>
-          {(items as any[]).map((s: any) => (
-            <div key={s.id} onClick={() => onSelectSource(selectedSource?.id === s.id ? null : s)} style={{ background: selectedSource?.id === s.id ? "rgba(0,229,255,0.04)" : "rgba(255,255,255,0.02)", border: selectedSource?.id === s.id ? "1px solid rgba(0,229,255,0.15)" : "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-                <span style={{ fontSize: 24, marginTop: 2 }}>{SOURCE_ICONS[s.type] || "📝"}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 4 }}>{s.title}</div>
-                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>{s.author} · {s.date}</div>
-                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", lineHeight: 1.6, margin: 0 }}>{s.summary}</p>
-                  <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-                    {s.themes.map((t: string) => <span key={t} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: `${tc(t).accent}15`, color: tc(t).accent, border: `1px solid ${tc(t).accent}25` }}>{t}</span>)}
+    <div style={{ display: "flex", gap: 24 }}>
+      {/* Source list */}
+      <div style={{ flex: selectedSource ? "0 0 380px" : 1, transition: "all 0.3s" }}>
+        <h1 style={{ fontSize: 28, fontWeight: 800, margin: "0 0 8px", letterSpacing: "-0.03em", fontFamily: "'Outfit', sans-serif" }}>Content Library</h1>
+        <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginBottom: 28 }}>{sources.length} items</p>
+        <div style={{ display: "flex", gap: 8, marginBottom: 24, flexWrap: "wrap" }}>
+          {["all", "podcast", "paper", "article", "book"].map(type => (
+            <button key={type} onClick={() => setFilter(type)} style={{ padding: "6px 16px", borderRadius: 20, fontSize: 12, fontWeight: 500, background: filter === type ? "rgba(0,229,255,0.12)" : "rgba(255,255,255,0.04)", border: filter === type ? "1px solid rgba(0,229,255,0.3)" : "1px solid rgba(255,255,255,0.08)", color: filter === type ? "#00e5ff" : "rgba(255,255,255,0.5)", cursor: "pointer", fontFamily: "inherit" }}>
+              {type === "all" ? "All" : `${SOURCE_ICONS[type] || "📝"} ${type.charAt(0).toUpperCase() + type.slice(1)}s`}
+            </button>
+          ))}
+          {!selectedSource && <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search..." style={{ marginLeft: "auto", padding: "6px 16px", borderRadius: 20, fontSize: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "#e4e4e7", outline: "none", width: 200, fontFamily: "inherit" }} />}
+        </div>
+        {Object.entries(grouped).map(([period, items]: [string, any]) => (
+          <div key={period} style={{ marginBottom: 28 }}>
+            <h3 style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", marginBottom: 10, fontWeight: 600 }}>{period}</h3>
+            {(items as any[]).map((s: any) => (
+              <div key={s.id} onClick={() => handleSelectSource(s)} style={{ background: selectedSource?.id === s.id ? "rgba(0,229,255,0.04)" : "rgba(255,255,255,0.02)", border: selectedSource?.id === s.id ? "1px solid rgba(0,229,255,0.15)" : "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "16px 20px", marginBottom: 8, cursor: "pointer", transition: "all 0.2s" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                  <span style={{ fontSize: 24, marginTop: 2 }}>{SOURCE_ICONS[s.type] || "📝"}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 4 }}>{s.title}</div>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginBottom: 8 }}>{s.author} · {s.date} · {s.claimCount} claims</div>
+                    {!selectedSource && <p style={{ fontSize: 13, color: "rgba(255,255,255,0.45)", lineHeight: 1.6, margin: 0 }}>{s.summary}</p>}
+                    <div style={{ display: "flex", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+                      {s.themes.map((t: string) => <span key={t} style={{ fontSize: 10, padding: "2px 8px", borderRadius: 10, background: `${tc(t).accent}15`, color: tc(t).accent, border: `1px solid ${tc(t).accent}25` }}>{t}</span>)}
+                    </div>
                   </div>
                 </div>
               </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Detail panel */}
+      {selectedSource && (
+        <div style={{ flex: 1, minWidth: 0, animation: "fadeSlideIn 0.3s ease" }}>
+          <div style={{ position: "sticky", top: 0 }}>
+            {/* Header */}
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(0,229,255,0.1)", borderRadius: 12, padding: "24px 28px", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                    <span style={{ fontSize: 28 }}>{SOURCE_ICONS[selectedSource.type] || "📝"}</span>
+                    <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, fontFamily: "'Outfit', sans-serif" }}>{selectedSource.title}</h2>
+                  </div>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.4)", marginBottom: 12 }}>{selectedSource.author} · {selectedSource.date}</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {selectedSource.themes.map((t: string) => <span key={t} style={{ fontSize: 10, padding: "3px 10px", borderRadius: 10, background: `${tc(t).accent}15`, color: tc(t).accent, border: `1px solid ${tc(t).accent}25` }}>{t}</span>)}
+                  </div>
+                </div>
+                <button onClick={() => { onSelectSource(null); setSourceDetail(null); }} style={{ background: "rgba(255,255,255,0.06)", border: "none", borderRadius: 6, padding: "4px 10px", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>✕</button>
+              </div>
+              {selectedSource.url && <a href={selectedSource.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 12, color: "#00e5ff", textDecoration: "none", display: "inline-block", marginTop: 12, opacity: 0.7 }}>View original →</a>}
             </div>
-          ))}
+
+            {detailLoading ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 40, color: "rgba(255,255,255,0.3)" }}>
+                <span style={{ width: 20, height: 20, borderRadius: "50%", border: "2px solid rgba(0,229,255,0.2)", borderTopColor: "#00e5ff", animation: "spin 0.8s linear infinite", display: "inline-block" }} />
+                <span style={{ marginLeft: 10, fontSize: 13 }}>Loading details...</span>
+              </div>
+            ) : sourceDetail ? (
+              <div style={{ maxHeight: "calc(100vh - 240px)", overflow: "auto" }}>
+                {/* Summary */}
+                <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "20px 24px", marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", marginBottom: 10, fontWeight: 600 }}>Summary</h3>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap" }}>{sourceDetail.summary}</p>
+                </div>
+
+                {/* Key Takeaways */}
+                {keyTakeaways.length > 0 && (
+                  <div style={{ background: "rgba(0,229,255,0.03)", border: "1px solid rgba(0,229,255,0.08)", borderRadius: 12, padding: "20px 24px", marginBottom: 12 }}>
+                    <h3 style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: "#00e5ff", marginBottom: 12, fontWeight: 600 }}>Key Takeaways</h3>
+                    {keyTakeaways.map((t: string, i: number) => (
+                      <div key={i} style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                        <span style={{ color: "#00e5ff", fontSize: 12, marginTop: 2, flexShrink: 0 }}>◆</span>
+                        <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.6, margin: 0 }}>{t}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Claims */}
+                <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "20px 24px", marginBottom: 12 }}>
+                  <h3 style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", marginBottom: 14, fontWeight: 600 }}>
+                    Claims Extracted ({detailClaims.length})
+                  </h3>
+                  {detailClaims.map((claim: any, i: number) => (
+                    <div key={claim.id || i} style={{ marginBottom: 16, paddingBottom: 16, borderBottom: i < detailClaims.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none" }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                        <span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)", fontFamily: "'JetBrains Mono'", marginTop: 2, flexShrink: 0 }}>{i + 1}.</span>
+                        <div style={{ flex: 1 }}>
+                          <p style={{ fontSize: 14, fontWeight: 500, lineHeight: 1.5, margin: "0 0 8px", color: "#e4e4e7" }}>"{claim.text}"</p>
+                          {claim.explanation && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", lineHeight: 1.5, margin: "0 0 8px" }}>{claim.explanation}</p>}
+                          {claim.implications && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", lineHeight: 1.5, margin: "0 0 8px", fontStyle: "italic" }}>→ {claim.implications}</p>}
+                          {claim.supportingQuote && (
+                            <div style={{ background: "rgba(124,77,255,0.05)", borderLeft: "2px solid rgba(124,77,255,0.3)", padding: "8px 12px", borderRadius: "0 6px 6px 0", marginTop: 8 }}>
+                              <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(124,77,255,0.6)", marginBottom: 4, fontWeight: 600 }}>Supporting Quote</div>
+                              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", lineHeight: 1.5, margin: 0, fontStyle: "italic" }}>"{claim.supportingQuote}"</p>
+                            </div>
+                          )}
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+                            <StatusBadge status={(claim.status || "emerging").toLowerCase()} />
+                            <ConfidenceBar value={claim.confidence} color="#7c4dff" />
+                            {claim.themes?.map((ct: any) => (
+                              <span key={ct.theme?.id || ct.themeId} style={{ fontSize: 9, padding: "1px 6px", borderRadius: 8, background: `${tc(ct.theme?.name).accent}12`, color: tc(ct.theme?.name).accent }}>{ct.theme?.name}</span>
+                            ))}
+                          </div>
+                          {(claim.contradicts?.length > 0 || claim.contradictedBy?.length > 0) && (
+                            <div style={{ marginTop: 8, padding: "6px 10px", background: "rgba(255,64,129,0.05)", borderRadius: 6, borderLeft: "2px solid rgba(255,64,129,0.3)" }}>
+                              <div style={{ fontSize: 9, color: "#ff4081", fontWeight: 600, marginBottom: 2 }}>⚡ CONTRADICTIONS</div>
+                              {claim.contradicts?.map((c: any) => <div key={c.contradicted?.id} style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>vs: "{c.contradicted?.text?.slice(0, 80)}..."</div>)}
+                              {claim.contradictedBy?.map((c: any) => <div key={c.claim?.id} style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>vs: "{c.claim?.text?.slice(0, 80)}..."</div>)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Transcript */}
+                {sourceDetail.rawText && (
+                  <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "20px 24px", marginBottom: 12 }}>
+                    <button onClick={() => setShowTranscript(!showTranscript)} style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", padding: 0, width: "100%" }}>
+                      <h3 style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", margin: 0, fontWeight: 600 }}>
+                        {selectedSource.type === "podcast" ? "Full Transcript" : "Source Text"} ({Math.round(sourceDetail.rawText.length / 1000)}k chars)
+                      </h3>
+                      <span style={{ marginLeft: "auto", color: "rgba(255,255,255,0.3)", fontSize: 12 }}>{showTranscript ? "▾" : "▸"}</span>
+                    </button>
+                    {showTranscript && (
+                      <div style={{ marginTop: 14, maxHeight: 500, overflow: "auto", padding: "16px", background: "rgba(0,0,0,0.15)", borderRadius: 8 }}>
+                        <p style={{ fontSize: 12, color: "rgba(255,255,255,0.45)", lineHeight: 1.8, margin: 0, whiteSpace: "pre-wrap", fontFamily: "'JetBrains Mono', monospace" }}>
+                          {sourceDetail.rawText}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
