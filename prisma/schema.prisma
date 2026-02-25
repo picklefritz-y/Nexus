@@ -27,6 +27,7 @@ model User {
   reviewLogs    ReviewLog[]
   digests       Digest[]
   userThemes    UserTheme[]
+  notes         Note[]
 
   @@map("users")
 }
@@ -93,6 +94,7 @@ model Source {
   // Relations
   claims           ClaimSource[]
   themes           SourceTheme[]
+  notes            Note[]
 
   @@index([userId])
   @@index([type])
@@ -119,6 +121,7 @@ model Theme {
   claims      ClaimTheme[]
   sources     SourceTheme[]
   userThemes  UserTheme[]
+  notes       Note[]
 
   @@map("themes")
 }
@@ -179,6 +182,8 @@ model Claim {
   sources      ClaimSource[]
   themes       ClaimTheme[]
   reviewCards  ReviewCard[]
+
+  notes        Note[]
 
   // Contradiction tracking (self-referencing many-to-many)
   contradicts    Contradiction[] @relation("ClaimContradicts")
@@ -337,4 +342,38 @@ model Digest {
   @@unique([userId, weekStart])
   @@index([userId])
   @@map("digests")
+}
+
+// ============================================================
+// Notes — user annotations linked to sources, claims, or themes
+// ============================================================
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+
+  // Content
+  title     String?
+  content   String
+
+  // Polymorphic linking (at most one, or none for standalone)
+  sourceId  String?
+  claimId   String?
+  themeId   String?
+  topic     String?  // Free-form grouping for standalone notes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  source  Source? @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  claim   Claim?  @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  theme   Theme?  @relation(fields: [themeId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([sourceId])
+  @@index([claimId])
+  @@index([themeId])
+  @@index([topic])
+  @@map("notes")
 }

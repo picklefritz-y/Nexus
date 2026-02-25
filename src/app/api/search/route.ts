@@ -12,10 +12,10 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get("limit") || "20");
 
   if (!q || q.length < 2) {
-    return NextResponse.json({ success: true, data: { claims: [], sources: [], themes: [] } });
+    return NextResponse.json({ success: true, data: { claims: [], sources: [], themes: [], notes: [] } });
   }
 
-  const [claims, sources, themes] = await Promise.all([
+  const [claims, sources, themes, notes] = await Promise.all([
     // Search claims by text, explanation, implications
     prisma.claim.findMany({
       where: {
@@ -82,11 +82,28 @@ export async function GET(request: NextRequest) {
       },
       take: 10,
     }),
+
+    // Search notes by title and content
+    prisma.note.findMany({
+      where: {
+        userId: MVP_USER_ID,
+        OR: [
+          { title: { contains: q, mode: "insensitive" } },
+          { content: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      select: {
+        id: true, title: true, content: true, topic: true,
+        sourceId: true, claimId: true, themeId: true, updatedAt: true,
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 5,
+    }),
   ]);
 
   return NextResponse.json({
     success: true,
-    data: { claims, sources, themes },
+    data: { claims, sources, themes, notes },
     query: q,
   });
 }

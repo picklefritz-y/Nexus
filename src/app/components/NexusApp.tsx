@@ -425,6 +425,8 @@ export default function NexusApp() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [animateIn, setAnimateIn] = useState(false);
   const [selectedSource, setSelectedSource] = useState<any>(null);
+  const [notes, setNotes] = useState<any[]>([]);
+  const [themeIdMap, setThemeIdMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -437,17 +439,21 @@ export default function NexusApp() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true); setError(null);
-      const [dashRes, contentRes, claimsRes] = await Promise.all([
+      const [dashRes, contentRes, claimsRes, notesRes] = await Promise.all([
         fetch("/api/dashboard").then(r => r.ok ? r.json() : { success: false }),
         fetch("/api/content").then(r => r.ok ? r.json() : { success: false }),
         fetch("/api/claims").then(r => r.ok ? r.json() : { success: false }),
+        fetch("/api/notes").then(r => r.ok ? r.json() : { success: false }),
       ]);
       if (contentRes.success && contentRes.data) setSources((Array.isArray(contentRes.data) ? contentRes.data : []).map(transformSource));
       if (claimsRes.success && claimsRes.data) setClaims((Array.isArray(claimsRes.data) ? claimsRes.data : []).map(transformClaim));
+      if (notesRes.success && notesRes.data) setNotes(Array.isArray(notesRes.data) ? notesRes.data : []);
       if (dashRes.success && dashRes.data?.themes) {
         const cm: Record<string, any> = {};
-        dashRes.data.themes.forEach((t: any) => { cm[t.name] = getThemeColors(t.name, t.icon, t.color, t.bgColor); });
+        const idm: Record<string, string> = {};
+        dashRes.data.themes.forEach((t: any) => { cm[t.name] = getThemeColors(t.name, t.icon, t.color, t.bgColor); if (t.id) idm[t.name] = t.id; });
         setThemeColors(cm);
+        setThemeIdMap(idm);
       }
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   }, []);
@@ -491,6 +497,7 @@ export default function NexusApp() {
     if (type === "theme") { setSelectedTheme(item.name); setView("dashboard"); }
     else if (type === "source") { setSelectedSource(item); setView("library"); }
     else if (type === "claim") { setView("claims"); }
+    else if (type === "note") { setView("notes"); }
   }, []);
 
   const tc = (name: string) => themeColors[name] || getThemeColors(name);
@@ -576,6 +583,7 @@ export default function NexusApp() {
     { id: "analytics", label: "Analytics", icon: "▦" },
     { id: "library", label: "Library", icon: "◫" },
     { id: "claims", label: "Claims", icon: "◈" },
+    { id: "notes", label: "Notes", icon: "✎" },
     { id: "ingest", label: "Add Content", icon: "+" },
     { id: "review", label: `Review${dueCards.length > 0 ? ` (${dueCards.length})` : ""}`, icon: "↻" },
   ];
@@ -653,7 +661,7 @@ export default function NexusApp() {
             {/* Search input */}
             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <span style={{ fontSize: 18, color: "rgba(255,255,255,0.3)" }}>⌕</span>
-              <input ref={searchInputRef} value={searchQuery} onChange={(e) => handleSearch(e.target.value)} placeholder="Search claims, sources, themes..." style={{ flex: 1, background: "none", border: "none", outline: "none", color: "#e4e4e7", fontSize: 16, fontFamily: "inherit" }} />
+              <input ref={searchInputRef} value={searchQuery} onChange={(e) => handleSearch(e.target.value)} placeholder="Search claims, sources, themes, notes..." style={{ flex: 1, background: "none", border: "none", outline: "none", color: "#e4e4e7", fontSize: 16, fontFamily: "inherit" }} />
               {searchLoading && <span style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid rgba(0,229,255,0.2)", borderTopColor: "#00e5ff", animation: "spin 0.8s linear infinite", display: "inline-block" }} />}
               <button onClick={() => { setSearchOpen(false); setSearchQuery(""); setSearchResults(null); }} style={{ background: "rgba(255,255,255,0.06)", border: "none", borderRadius: 4, padding: "2px 8px", color: "rgba(255,255,255,0.3)", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>ESC</button>
             </div>
@@ -663,7 +671,7 @@ export default function NexusApp() {
               {searchQuery.length >= 2 && !searchResults && !searchLoading && (
                 <div style={{ padding: "24px", textAlign: "center", color: "rgba(255,255,255,0.25)", fontSize: 13 }}>Searching...</div>
               )}
-              {searchResults && searchResults.themes?.length === 0 && searchResults.claims?.length === 0 && searchResults.sources?.length === 0 && (
+              {searchResults && searchResults.themes?.length === 0 && searchResults.claims?.length === 0 && searchResults.sources?.length === 0 && (searchResults.notes?.length || 0) === 0 && (
                 <div style={{ padding: "24px", textAlign: "center", color: "rgba(255,255,255,0.25)", fontSize: 13 }}>No results for "{searchQuery}"</div>
               )}
 
@@ -724,10 +732,26 @@ export default function NexusApp() {
               )}
             </div>
 
+              {/* Note results */}
+              {searchResults?.notes?.length > 0 && (
+                <div style={{ marginBottom: 4 }}>
+                  <div style={{ padding: "8px 12px", fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.25)" }}>Notes ({searchResults.notes.length})</div>
+                  {searchResults.notes.map((n: any) => (
+                    <button key={n.id} onClick={() => handleSearchSelect("note", n)} style={{ display: "flex", alignItems: "flex-start", gap: 12, width: "100%", padding: "10px 14px", background: "transparent", border: "none", borderRadius: 8, color: "#e4e4e7", cursor: "pointer", fontFamily: "inherit", textAlign: "left", transition: "background 0.15s" }} onMouseEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")} onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                      <span style={{ fontSize: 16, marginTop: 2 }}>✎</span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500, lineHeight: 1.4 }}>{n.title || n.content.slice(0, 60) + (n.content.length > 60 ? "..." : "")}</div>
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{n.topic ? `Topic: ${n.topic}` : n.sourceId ? "Linked to source" : n.claimId ? "Linked to claim" : n.themeId ? "Linked to theme" : "Standalone"}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+
             {/* Footer hint */}
             {!searchResults && searchQuery.length < 2 && (
               <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.04)", display: "flex", gap: 16, justifyContent: "center" }}>
-                {[{ icon: "◈", label: "claims" }, { icon: "◫", label: "sources" }, { icon: "◉", label: "themes" }].map(h => (
+                {[{ icon: "◈", label: "claims" }, { icon: "◫", label: "sources" }, { icon: "◉", label: "themes" }, { icon: "✎", label: "notes" }].map(h => (
                   <span key={h.label} style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>{h.icon} {h.label}</span>
                 ))}
               </div>
@@ -742,13 +766,14 @@ export default function NexusApp() {
         {error && <div style={{ padding: 40, color: "#ff4081" }}>Error: {error}</div>}
         {!loading && !error && <>
           {view === "dashboard" && !selectedTheme && <DashboardView themeStats={themeStats} sources={sources} claims={claims} dueCards={dueCards} onThemeClick={setSelectedTheme} onStartReview={() => startReview()} FSRS={FSRS} tc={tc} />}
-          {view === "dashboard" && selectedTheme && <ThemeDetailView theme={selectedTheme} sources={sources} claims={claims} FSRS={FSRS} onBack={() => setSelectedTheme(null)} onStartReview={() => startReview(selectedTheme)} tc={tc} />}
+          {view === "dashboard" && selectedTheme && <ThemeDetailView theme={selectedTheme} themeId={themeIdMap[selectedTheme]} sources={sources} claims={claims} FSRS={FSRS} onBack={() => setSelectedTheme(null)} onStartReview={() => startReview(selectedTheme)} tc={tc} />}
           {view === "library" && <LibraryView sources={sources} claims={claims} selectedSource={selectedSource} onSelectSource={setSelectedSource} tc={tc} />}
           {view === "claims" && <ClaimsView claims={claims} sources={sources} FSRS={FSRS} tc={tc} />}
           {view === "graph" && <GraphView claims={claims} sources={sources} themeStats={themeStats} tc={tc} FSRS={FSRS} />}
           {view === "analytics" && <AnalyticsView tc={tc} />}
           {view === "chat" && <ChatView tc={tc} />}
           {view === "tables" && <TablesView tc={tc} />}
+          {view === "notes" && <NotesView notes={notes} sources={sources} claims={claims} themeStats={themeStats} themeIdMap={themeIdMap} tc={tc} onRefresh={fetchData} />}
           {view === "ingest" && <IngestView url={ingestUrl} setUrl={setIngestUrl} step={ingestStep} onSubmit={handleIngest} statusMessage={ingestStatus} />}
           {view === "review" && reviewQueue.length > 0 && <ReviewView claim={reviewQueue[currentReviewIndex]} index={currentReviewIndex} total={reviewQueue.length} showAnswer={showAnswer} onReveal={() => setShowAnswer(true)} onRate={handleRating} sources={sources} claims={claims} FSRS={FSRS} tc={tc} />}
         </>}
@@ -833,7 +858,7 @@ function DashboardView({ themeStats, sources, claims, dueCards, onThemeClick, on
 // ============================================================
 // Theme Detail View
 // ============================================================
-function ThemeDetailView({ theme, sources, claims, FSRS, onBack, onStartReview, tc }: any) {
+function ThemeDetailView({ theme, themeId, sources, claims, FSRS, onBack, onStartReview, tc }: any) {
   const colors = tc(theme);
   const ts = sources.filter((s: any) => s.themes.includes(theme));
   const tClaims = claims.filter((c: any) => c.themes.includes(theme));
@@ -877,6 +902,7 @@ function ThemeDetailView({ theme, sources, claims, FSRS, onBack, onStartReview, 
           </div>
         ))}
       </div>
+      {themeId && <div style={{ marginTop: 28 }}><InlineNotes entityType="theme" entityId={themeId} /></div>}
     </div>
   );
 }
@@ -905,6 +931,383 @@ function ClaimCard({ claim, FSRS, accentColor, claims }: any) {
         <div style={{ marginTop: 10, padding: "8px 12px", background: "rgba(255,64,129,0.04)", borderRadius: 6, borderLeft: "2px solid rgba(255,64,129,0.3)" }}>
           <div style={{ fontSize: 10, color: "#ff4081", fontWeight: 600, marginBottom: 4 }}>⚡ CONTRADICTS:</div>
           {contras.map((cc: any) => <div key={cc.id} style={{ fontSize: 12, color: "rgba(255,255,255,0.45)" }}>"{cc.text}" <StatusBadge status={cc.status || "contested"} /></div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// Inline Notes (reusable for detail panels)
+// ============================================================
+function InlineNotes({ entityType, entityId }: { entityType: "source" | "claim" | "theme"; entityId: string }) {
+  const [notes, setNotes] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [newTitle, setNewTitle] = useState("");
+  const [newContent, setNewContent] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const fetchNotes = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/notes?${entityType}Id=${entityId}`);
+      const data = res.ok ? await res.json() : { success: false };
+      if (data.success) setNotes(data.data || []);
+    } catch (_e) { /* ignore */ }
+    setLoading(false);
+  }, [entityType, entityId]);
+
+  useEffect(() => { fetchNotes(); }, [fetchNotes]);
+
+  const handleAdd = async () => {
+    if (!newContent.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newContent, title: newTitle || null, [`${entityType}Id`]: entityId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNotes(prev => [data.data, ...prev]);
+        setNewContent(""); setNewTitle(""); setAdding(false);
+      }
+    } catch (_e) { /* ignore */ }
+    setSaving(false);
+  };
+
+  const handleUpdate = async (id: string) => {
+    if (!editContent.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/notes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: editTitle || null, content: editContent }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNotes(prev => prev.map(n => n.id === id ? data.data : n));
+        setEditingId(null);
+      }
+    } catch (_e) { /* ignore */ }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await fetch(`/api/notes/${id}`, { method: "DELETE" });
+      setNotes(prev => prev.filter(n => n.id !== id));
+    } catch (_e) { /* ignore */ }
+  };
+
+  if (loading) return null;
+
+  return (
+    <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 12, padding: "20px 24px", marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: notes.length > 0 || adding ? 14 : 0 }}>
+        <h3 style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", margin: 0, fontWeight: 600 }}>Notes ({notes.length})</h3>
+        <button onClick={() => { setAdding(!adding); setNewTitle(""); setNewContent(""); }} style={{ background: adding ? "rgba(255,255,255,0.06)" : "rgba(0,229,255,0.08)", border: adding ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,229,255,0.15)", borderRadius: 6, padding: "3px 10px", color: adding ? "rgba(255,255,255,0.4)" : "#00e5ff", cursor: "pointer", fontSize: 11, fontFamily: "inherit" }}>
+          {adding ? "Cancel" : "+ Add Note"}
+        </button>
+      </div>
+
+      {adding && (
+        <div style={{ marginBottom: 14, animation: "fadeSlideIn 0.2s ease" }}>
+          <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Title (optional)" style={{ width: "100%", padding: "8px 12px", borderRadius: 6, fontSize: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", marginBottom: 6, boxSizing: "border-box" }} />
+          <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="Write a note..." rows={3} style={{ width: "100%", padding: "8px 12px", borderRadius: 6, fontSize: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", resize: "vertical", lineHeight: 1.6, boxSizing: "border-box" }} />
+          <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+            <button onClick={handleAdd} disabled={!newContent.trim() || saving} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600, background: "rgba(0,229,255,0.1)", border: "1px solid rgba(0,229,255,0.2)", color: "#00e5ff", cursor: newContent.trim() && !saving ? "pointer" : "default", opacity: newContent.trim() && !saving ? 1 : 0.4, fontFamily: "inherit" }}>Save</button>
+          </div>
+        </div>
+      )}
+
+      {notes.map((note: any) => (
+        <div key={note.id} style={{ marginBottom: 10, paddingBottom: 10, borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+          {editingId === note.id ? (
+            <div style={{ animation: "fadeSlideIn 0.2s ease" }}>
+              <input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Title (optional)" style={{ width: "100%", padding: "6px 10px", borderRadius: 6, fontSize: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", marginBottom: 4, boxSizing: "border-box" }} />
+              <textarea value={editContent} onChange={e => setEditContent(e.target.value)} rows={3} style={{ width: "100%", padding: "6px 10px", borderRadius: 6, fontSize: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", resize: "vertical", lineHeight: 1.6, boxSizing: "border-box" }} />
+              <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                <button onClick={() => handleUpdate(note.id)} disabled={!editContent.trim() || saving} style={{ padding: "4px 12px", borderRadius: 6, fontSize: 11, background: "rgba(0,229,255,0.1)", border: "1px solid rgba(0,229,255,0.2)", color: "#00e5ff", cursor: "pointer", fontFamily: "inherit" }}>Save</button>
+                <button onClick={() => setEditingId(null)} style={{ padding: "4px 12px", borderRadius: 6, fontSize: 11, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {note.title && <div style={{ fontSize: 13, fontWeight: 600, color: "#e4e4e7", marginBottom: 4 }}>{note.title}</div>}
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.55)", lineHeight: 1.6, margin: "0 0 6px", whiteSpace: "pre-wrap" }}>{note.content}</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>{new Date(note.updatedAt).toLocaleDateString()}</span>
+                <button onClick={() => { setEditingId(note.id); setEditTitle(note.title || ""); setEditContent(note.content); }} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.25)", cursor: "pointer", fontSize: 10, fontFamily: "inherit", padding: 0 }}>Edit</button>
+                <button onClick={() => handleDelete(note.id)} style={{ background: "none", border: "none", color: "rgba(255,64,129,0.4)", cursor: "pointer", fontSize: 10, fontFamily: "inherit", padding: 0 }}>Delete</button>
+              </div>
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ============================================================
+// Notes View
+// ============================================================
+function NotesView({ notes, sources, claims, themeStats, themeIdMap, tc, onRefresh }: any) {
+  const [filter, setFilter] = useState<"all" | "topic" | "source" | "claim" | "theme">("all");
+  const [selectedNote, setSelectedNote] = useState<any>(null);
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [search, setSearch] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Create form
+  const [newTitle, setNewTitle] = useState("");
+  const [newContent, setNewContent] = useState("");
+  const [newLinkType, setNewLinkType] = useState<"none" | "source" | "claim" | "theme">("none");
+  const [newLinkId, setNewLinkId] = useState("");
+  const [newTopic, setNewTopic] = useState("");
+
+  // Edit form
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+
+  const handleCreate = async () => {
+    if (!newContent.trim()) return;
+    setSaving(true);
+    try {
+      const body: any = { content: newContent, title: newTitle || null };
+      if (newLinkType === "source" && newLinkId) body.sourceId = newLinkId;
+      else if (newLinkType === "claim" && newLinkId) body.claimId = newLinkId;
+      else if (newLinkType === "theme" && newLinkId) body.themeId = themeIdMap[newLinkId] || newLinkId;
+      else if (newTopic.trim()) body.topic = newTopic.trim();
+
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCreating(false);
+        setNewTitle(""); setNewContent(""); setNewLinkType("none"); setNewLinkId(""); setNewTopic("");
+        onRefresh();
+      }
+    } catch (_e) { /* ignore */ }
+    setSaving(false);
+  };
+
+  const handleUpdate = async () => {
+    if (!selectedNote || !editContent.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/notes/${selectedNote.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: editTitle || null, content: editContent }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSelectedNote(data.data);
+        setEditing(false);
+        onRefresh();
+      }
+    } catch (_e) { /* ignore */ }
+    setSaving(false);
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await fetch(`/api/notes/${id}`, { method: "DELETE" });
+      if (selectedNote?.id === id) setSelectedNote(null);
+      onRefresh();
+    } catch (_e) { /* ignore */ }
+  };
+
+  // Filter + search
+  const filtered = notes.filter((n: any) => {
+    if (search) {
+      const q = search.toLowerCase();
+      if (!(n.title || "").toLowerCase().includes(q) && !n.content.toLowerCase().includes(q)) return false;
+    }
+    if (filter === "topic") return !n.sourceId && !n.claimId && !n.themeId;
+    if (filter === "source") return !!n.sourceId;
+    if (filter === "claim") return !!n.claimId;
+    if (filter === "theme") return !!n.themeId;
+    return true;
+  });
+
+  // Group notes
+  const grouped = (() => {
+    if (filter === "topic") return groupBy(filtered, (n: any) => n.topic || "Ungrouped");
+    if (filter === "source") return groupBy(filtered, (n: any) => n.source?.title || "Unknown Source");
+    if (filter === "claim") return groupBy(filtered, (n: any) => n.claim?.text ? (n.claim.text.length > 60 ? n.claim.text.slice(0, 57) + "..." : n.claim.text) : "Unknown Claim");
+    if (filter === "theme") return groupBy(filtered, (n: any) => n.theme?.name || "Unknown Theme");
+    return { "All Notes": filtered };
+  })();
+
+  const linkBadge = (note: any) => {
+    if (note.sourceId) return { icon: SOURCE_ICONS[(note.source?.type || "").toLowerCase()] || "📝", label: note.source?.title || "Source", color: "#00e5ff" };
+    if (note.claimId) return { icon: "◈", label: (note.claim?.text || "Claim").slice(0, 40), color: "#7c4dff" };
+    if (note.themeId) return { icon: note.theme?.icon || "📂", label: note.theme?.name || "Theme", color: note.theme?.color || "#ffd600" };
+    if (note.topic) return { icon: "▪", label: note.topic, color: "#ffd600" };
+    return null;
+  };
+
+  // Unique topics for showing in the create form
+  const existingTopics = Array.from(new Set<string>(notes.filter((n: any) => n.topic).map((n: any) => n.topic)));
+
+  return (
+    <div style={{ display: "flex", gap: 24 }}>
+      {/* Left: note list */}
+      <div style={{ flex: selectedNote || creating ? "0 0 380px" : 1, transition: "all 0.3s" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0, letterSpacing: "-0.03em", fontFamily: "'Outfit', sans-serif" }}>Notes</h1>
+          <button onClick={() => { setCreating(true); setSelectedNote(null); setEditing(false); }} style={{ padding: "8px 20px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "linear-gradient(135deg, rgba(0,229,255,0.15), rgba(124,77,255,0.15))", border: "1px solid rgba(0,229,255,0.2)", color: "#00e5ff", cursor: "pointer", fontFamily: "inherit" }}>+ New Note</button>
+        </div>
+        <p style={{ color: "rgba(255,255,255,0.4)", fontSize: 14, marginBottom: 20 }}>{notes.length} notes</p>
+
+        {/* Filter tabs */}
+        <div style={{ display: "flex", gap: 6, marginBottom: 16, flexWrap: "wrap" }}>
+          {([["all", "All"], ["topic", "By Topic"], ["source", "By Source"], ["claim", "By Claim"], ["theme", "By Theme"]] as const).map(([id, label]) => (
+            <button key={id} onClick={() => setFilter(id)} style={{ padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 500, background: filter === id ? "rgba(0,229,255,0.12)" : "rgba(255,255,255,0.04)", border: filter === id ? "1px solid rgba(0,229,255,0.3)" : "1px solid rgba(255,255,255,0.08)", color: filter === id ? "#00e5ff" : "rgba(255,255,255,0.5)", cursor: "pointer", fontFamily: "inherit" }}>{label}</button>
+          ))}
+        </div>
+
+        {/* Search */}
+        {!(selectedNote || creating) && (
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search notes..." style={{ width: "100%", padding: "8px 16px", borderRadius: 8, fontSize: 13, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", marginBottom: 20, boxSizing: "border-box" }} />
+        )}
+
+        {/* Grouped note list */}
+        {Object.entries(grouped).map(([group, items]: [string, any]) => (
+          <div key={group} style={{ marginBottom: 24 }}>
+            {filter !== "all" && <h3 style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", marginBottom: 8, fontWeight: 600 }}>{group} ({items.length})</h3>}
+            {(items as any[]).map((note: any) => {
+              const badge = linkBadge(note);
+              return (
+                <div key={note.id} onClick={() => { setSelectedNote(note); setCreating(false); setEditing(false); }} style={{ background: selectedNote?.id === note.id ? "rgba(0,229,255,0.04)" : "rgba(255,255,255,0.02)", border: selectedNote?.id === note.id ? "1px solid rgba(0,229,255,0.15)" : "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "14px 18px", marginBottom: 6, cursor: "pointer", transition: "all 0.2s" }}>
+                  {note.title && <div style={{ fontSize: 14, fontWeight: 600, color: "#e4e4e7", marginBottom: 4 }}>{note.title}</div>}
+                  <p style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", lineHeight: 1.5, margin: "0 0 8px", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any }}>{note.content}</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 10, color: "rgba(255,255,255,0.2)" }}>{new Date(note.updatedAt).toLocaleDateString()}</span>
+                    {badge && <span style={{ fontSize: 10, padding: "1px 8px", borderRadius: 8, background: `${badge.color}12`, color: badge.color, border: `1px solid ${badge.color}20` }}>{badge.icon} {badge.label.length > 30 ? badge.label.slice(0, 27) + "..." : badge.label}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+
+        {filtered.length === 0 && (
+          <div style={{ padding: "40px 20px", textAlign: "center", color: "rgba(255,255,255,0.25)", fontSize: 13 }}>
+            {search ? `No notes matching "${search}"` : filter === "all" ? "No notes yet. Click \"+ New Note\" to get started." : `No notes linked to ${filter}s.`}
+          </div>
+        )}
+      </div>
+
+      {/* Right: Create panel */}
+      {creating && (
+        <div style={{ flex: 1, minWidth: 0, animation: "fadeSlideIn 0.3s ease" }}>
+          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(0,229,255,0.1)", borderRadius: 12, padding: "24px 28px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, fontFamily: "'Outfit', sans-serif" }}>New Note</h2>
+              <button onClick={() => setCreating(false)} style={{ background: "rgba(255,255,255,0.06)", border: "none", borderRadius: 6, padding: "4px 10px", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>✕</button>
+            </div>
+
+            <input value={newTitle} onChange={e => setNewTitle(e.target.value)} placeholder="Title (optional)" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, fontSize: 14, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", marginBottom: 12, boxSizing: "border-box" }} />
+
+            <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="Write your note..." rows={8} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, fontSize: 13, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", resize: "vertical", lineHeight: 1.7, marginBottom: 16, boxSizing: "border-box" }} />
+
+            {/* Link type selector */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.1em", color: "rgba(255,255,255,0.3)", fontWeight: 600, display: "block", marginBottom: 8 }}>Link To</label>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                {([["none", "Standalone"], ["source", "Source"], ["claim", "Claim"], ["theme", "Theme"]] as const).map(([id, label]) => (
+                  <button key={id} onClick={() => { setNewLinkType(id); setNewLinkId(""); }} style={{ padding: "5px 14px", borderRadius: 20, fontSize: 11, fontWeight: 500, background: newLinkType === id ? "rgba(0,229,255,0.12)" : "rgba(255,255,255,0.04)", border: newLinkType === id ? "1px solid rgba(0,229,255,0.3)" : "1px solid rgba(255,255,255,0.08)", color: newLinkType === id ? "#00e5ff" : "rgba(255,255,255,0.5)", cursor: "pointer", fontFamily: "inherit" }}>{label}</button>
+                ))}
+              </div>
+
+              {newLinkType === "none" && (
+                <>
+                  <input value={newTopic} onChange={e => setNewTopic(e.target.value)} placeholder="Topic (optional, e.g. 'Research Questions')" list="topics-list" style={{ width: "100%", padding: "8px 12px", borderRadius: 6, fontSize: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                  <datalist id="topics-list">
+                    {existingTopics.map((t: string) => <option key={t} value={t} />)}
+                  </datalist>
+                </>
+              )}
+
+              {newLinkType === "source" && (
+                <select value={newLinkId} onChange={e => setNewLinkId(e.target.value)} style={{ width: "100%", padding: "8px 12px", borderRadius: 6, fontSize: 12, background: "rgba(12,30,56,0.95)", border: "1px solid rgba(255,255,255,0.1)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}>
+                  <option value="">Select a source...</option>
+                  {sources.map((s: any) => <option key={s.id} value={s.id}>{SOURCE_ICONS[s.type] || "📝"} {s.title}</option>)}
+                </select>
+              )}
+
+              {newLinkType === "claim" && (
+                <select value={newLinkId} onChange={e => setNewLinkId(e.target.value)} style={{ width: "100%", padding: "8px 12px", borderRadius: 6, fontSize: 12, background: "rgba(12,30,56,0.95)", border: "1px solid rgba(255,255,255,0.1)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}>
+                  <option value="">Select a claim...</option>
+                  {claims.map((c: any) => <option key={c.id} value={c.id}>{c.text.length > 80 ? c.text.slice(0, 77) + "..." : c.text}</option>)}
+                </select>
+              )}
+
+              {newLinkType === "theme" && (
+                <select value={newLinkId} onChange={e => setNewLinkId(e.target.value)} style={{ width: "100%", padding: "8px 12px", borderRadius: 6, fontSize: 12, background: "rgba(12,30,56,0.95)", border: "1px solid rgba(255,255,255,0.1)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}>
+                  <option value="">Select a theme...</option>
+                  {themeStats.map((t: any) => <option key={t.name} value={t.name}>{t.icon || "📂"} {t.name}</option>)}
+                </select>
+              )}
+            </div>
+
+            <button onClick={handleCreate} disabled={!newContent.trim() || (newLinkType !== "none" && !newLinkId) || saving} style={{ padding: "10px 28px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "linear-gradient(135deg, rgba(0,229,255,0.15), rgba(124,77,255,0.15))", border: "1px solid rgba(0,229,255,0.25)", color: "#00e5ff", cursor: newContent.trim() && !saving ? "pointer" : "default", opacity: newContent.trim() && !saving ? 1 : 0.4, fontFamily: "inherit" }}>
+              {saving ? "Saving..." : "Save Note"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Right: Detail/edit panel */}
+      {selectedNote && !creating && (
+        <div style={{ flex: 1, minWidth: 0, animation: "fadeSlideIn 0.3s ease" }}>
+          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(0,229,255,0.1)", borderRadius: 12, padding: "24px 28px" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 16 }}>
+              <div style={{ flex: 1 }}>
+                {(() => {
+                  const badge = linkBadge(selectedNote);
+                  return badge ? <span style={{ fontSize: 11, padding: "2px 10px", borderRadius: 8, background: `${badge.color}12`, color: badge.color, border: `1px solid ${badge.color}20`, marginBottom: 8, display: "inline-block" }}>{badge.icon} {badge.label}</span> : null;
+                })()}
+              </div>
+              <button onClick={() => setSelectedNote(null)} style={{ background: "rgba(255,255,255,0.06)", border: "none", borderRadius: 6, padding: "4px 10px", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontSize: 12, fontFamily: "inherit" }}>✕</button>
+            </div>
+
+            {editing ? (
+              <div>
+                <input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Title (optional)" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, fontSize: 14, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", marginBottom: 12, boxSizing: "border-box" }} />
+                <textarea value={editContent} onChange={e => setEditContent(e.target.value)} rows={10} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, fontSize: 13, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", color: "#e4e4e7", outline: "none", fontFamily: "inherit", resize: "vertical", lineHeight: 1.7, marginBottom: 12, boxSizing: "border-box" }} />
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={handleUpdate} disabled={!editContent.trim() || saving} style={{ padding: "8px 20px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "rgba(0,229,255,0.1)", border: "1px solid rgba(0,229,255,0.2)", color: "#00e5ff", cursor: "pointer", fontFamily: "inherit" }}>{saving ? "Saving..." : "Save"}</button>
+                  <button onClick={() => setEditing(false)} style={{ padding: "8px 20px", borderRadius: 8, fontSize: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.4)", cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {selectedNote.title && <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 12px", fontFamily: "'Outfit', sans-serif" }}>{selectedNote.title}</h2>}
+                <p style={{ fontSize: 14, color: "rgba(255,255,255,0.65)", lineHeight: 1.8, margin: "0 0 20px", whiteSpace: "pre-wrap" }}>{selectedNote.content}</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>Created {new Date(selectedNote.createdAt).toLocaleDateString()}</span>
+                  {selectedNote.updatedAt !== selectedNote.createdAt && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>· Updated {new Date(selectedNote.updatedAt).toLocaleDateString()}</span>}
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                    <button onClick={() => { setEditing(true); setEditTitle(selectedNote.title || ""); setEditContent(selectedNote.content); }} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontWeight: 500, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.5)", cursor: "pointer", fontFamily: "inherit" }}>Edit</button>
+                    <button onClick={() => handleDelete(selectedNote.id)} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontWeight: 500, background: "rgba(255,64,129,0.06)", border: "1px solid rgba(255,64,129,0.15)", color: "#ff4081", cursor: "pointer", fontFamily: "inherit" }}>Delete</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -1073,6 +1476,9 @@ function LibraryView({ sources, claims, selectedSource, onSelectSource, tc }: an
                     </div>
                   ))}
                 </div>
+
+                {/* Notes for this source */}
+                <InlineNotes entityType="source" entityId={selectedSource.id} />
 
                 {/* Transcript */}
                 {sourceDetail.rawText && (

@@ -234,6 +234,90 @@ export function useReviewQueue(themeId?: string) {
   return { ...data, loading, refresh };
 }
 
+// --- Notes ---
+
+export function useNotes(params?: {
+  sourceId?: string;
+  claimId?: string;
+  themeId?: string;
+  topic?: string;
+  search?: string;
+}) {
+  const [data, setData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    try {
+      setLoading(true);
+      const queryParams = new URLSearchParams();
+      if (params?.sourceId) queryParams.set("sourceId", params.sourceId);
+      if (params?.claimId) queryParams.set("claimId", params.claimId);
+      if (params?.themeId) queryParams.set("themeId", params.themeId);
+      if (params?.topic) queryParams.set("topic", params.topic);
+      if (params?.search) queryParams.set("search", params.search);
+
+      const result = await apiFetch<any[]>(`/notes?${queryParams.toString()}`);
+      setData(result);
+    } catch (err) {
+      console.error("Failed to fetch notes:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [params?.sourceId, params?.claimId, params?.themeId, params?.topic, params?.search]);
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return { notes: data, loading, refresh };
+}
+
+export function useNoteCrud() {
+  const [loading, setLoading] = useState(false);
+
+  const createNote = async (data: {
+    title?: string;
+    content: string;
+    sourceId?: string;
+    claimId?: string;
+    themeId?: string;
+    topic?: string;
+  }) => {
+    try {
+      setLoading(true);
+      return await apiFetch<any>("/notes", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateNote = async (id: string, data: { title?: string; content?: string; topic?: string }) => {
+    try {
+      setLoading(true);
+      return await apiFetch<any>(`/notes/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteNote = async (id: string) => {
+    try {
+      setLoading(true);
+      return await apiFetch<any>(`/notes/${id}`, { method: "DELETE" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return { createNote, updateNote, deleteNote, loading };
+}
+
 export function useReviewRate() {
   const [loading, setLoading] = useState(false);
 
