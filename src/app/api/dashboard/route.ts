@@ -10,6 +10,11 @@ const MVP_USER_ID = "user_mvp";
 
 export async function GET(request: NextRequest) {
   try {
+  const domainSlug = request.nextUrl.searchParams.get("domain");
+  const domainThemeFilter = domainSlug ? { domain: { slug: domainSlug } } : {};
+  const domainSourceFilter = domainSlug ? { themes: { some: { theme: { domain: { slug: domainSlug } } } } } : {};
+  const domainClaimFilter = domainSlug ? { themes: { some: { theme: { domain: { slug: domainSlug } } } } } : {};
+
   // Parallel queries for dashboard data
   const [
     sourceCount,
@@ -20,14 +25,14 @@ export async function GET(request: NextRequest) {
     recentReviews,
   ] = await Promise.all([
     // Total sources
-    prisma.source.count({ where: { userId: MVP_USER_ID, status: "COMPLETE" } }),
+    prisma.source.count({ where: { userId: MVP_USER_ID, status: "COMPLETE", ...domainSourceFilter } }),
 
     // Total claims
-    prisma.claim.count(),
+    prisma.claim.count({ where: domainClaimFilter }),
 
     // Recent sources (last 10)
     prisma.source.findMany({
-      where: { userId: MVP_USER_ID, status: "COMPLETE" },
+      where: { userId: MVP_USER_ID, status: "COMPLETE", ...domainSourceFilter },
       select: {
         id: true, title: true, author: true, type: true,
         addedAt: true, publicationDate: true,
@@ -38,9 +43,12 @@ export async function GET(request: NextRequest) {
       take: 10,
     }),
 
-    // All review cards for retention calculations
+    // All review cards for retention calculations (filter via claim themes)
     prisma.reviewCard.findMany({
-      where: { userId: MVP_USER_ID },
+      where: {
+        userId: MVP_USER_ID,
+        ...(domainSlug ? { claim: { themes: { some: { theme: { domain: { slug: domainSlug } } } } } } : {}),
+      },
       select: {
         id: true, due: true, stability: true, difficulty: true,
         state: true, lastReview: true, reps: true, lapses: true,
@@ -56,6 +64,7 @@ export async function GET(request: NextRequest) {
 
     // Themes with counts
     prisma.theme.findMany({
+      where: domainThemeFilter,
       include: {
         sources: { select: { sourceId: true } },
         claims: {
@@ -69,6 +78,7 @@ export async function GET(request: NextRequest) {
             },
           },
         },
+        domain: { select: { id: true, name: true, slug: true, icon: true, color: true } },
       },
     }),
 
@@ -160,6 +170,7 @@ export async function GET(request: NextRequest) {
         avgRetention: retention,
         dueForReview: due,
         contradictionCount: Math.floor(contradictions / 2),
+        domain: (theme as any).domain ? { id: (theme as any).domain.id, name: (theme as any).domain.name, slug: (theme as any).domain.slug, icon: (theme as any).domain.icon, color: (theme as any).domain.color } : null,
       };
     })
     .filter((t) => t.sourceCount > 0 || t.claimCount > 0)

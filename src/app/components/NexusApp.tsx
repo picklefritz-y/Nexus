@@ -416,6 +416,8 @@ export default function NexusApp() {
   const [claims, setClaims] = useState<any[]>([]);
   const [themeColors, setThemeColors] = useState<Record<string, { bg: string; accent: string; icon: string }>>({});
   const [selectedTheme, setSelectedTheme] = useState<string | null>(null);
+  const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  const [domains, setDomains] = useState<any[]>([]);
   const [reviewQueue, setReviewQueue] = useState<any[]>([]);
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -436,13 +438,15 @@ export default function NexusApp() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<any>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (domainFilter?: string | null) => {
+    const dq = domainFilter !== undefined ? domainFilter : selectedDomain;
+    const ds = dq ? `?domain=${dq}` : "";
     try {
       setLoading(true); setError(null);
       const [dashRes, contentRes, claimsRes, notesRes] = await Promise.all([
-        fetch("/api/dashboard").then(r => r.ok ? r.json() : { success: false }),
-        fetch("/api/content").then(r => r.ok ? r.json() : { success: false }),
-        fetch("/api/claims").then(r => r.ok ? r.json() : { success: false }),
+        fetch(`/api/dashboard${ds}`).then(r => r.ok ? r.json() : { success: false }),
+        fetch(`/api/content${ds}`).then(r => r.ok ? r.json() : { success: false }),
+        fetch(`/api/claims${ds}`).then(r => r.ok ? r.json() : { success: false }),
         fetch("/api/notes").then(r => r.ok ? r.json() : { success: false }),
       ]);
       if (contentRes.success && contentRes.data) setSources((Array.isArray(contentRes.data) ? contentRes.data : []).map(transformSource));
@@ -456,9 +460,15 @@ export default function NexusApp() {
         setThemeIdMap(idm);
       }
     } catch (err: any) { setError(err.message); } finally { setLoading(false); }
-  }, []);
+  }, [selectedDomain]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    // Fetch domains once on mount (no domain filter needed here)
+    fetch("/api/domains").then(r => r.ok ? r.json() : { success: false }).then(data => {
+      if (data.success && data.data) setDomains(data.data);
+    }).catch(() => {});
+  }, []);
   useEffect(() => { setAnimateIn(true); }, []);
   useEffect(() => { setAnimateIn(false); const t = setTimeout(() => setAnimateIn(true), 50); return () => clearTimeout(t); }, [view, selectedTheme]);
 
@@ -638,6 +648,28 @@ export default function NexusApp() {
           <div style={{ width: 32, height: 32, borderRadius: 8, background: "linear-gradient(135deg, #00e5ff 0%, #7c4dff 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "#000", flexShrink: 0, animation: "logoPulse 3s ease infinite" }}>N</div>
           {sidebarOpen && <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "0.05em", fontFamily: "'Outfit', sans-serif", background: "linear-gradient(135deg, #00e5ff, #7c4dff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>NEXUS</span>}
         </div>
+        {/* Domain selector */}
+        {sidebarOpen && domains.length > 0 && (
+          <div style={{ padding: "0 8px 12px" }}>
+            <div style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.12em", color: "rgba(255,255,255,0.25)", marginBottom: 6, paddingLeft: 4 }}>Domain</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <button
+                onClick={() => { setSelectedDomain(null); setSelectedTheme(null); fetchData(null); }}
+                style={{ padding: "5px 10px", borderRadius: 6, border: selectedDomain === null ? "1px solid rgba(0,229,255,0.3)" : "1px solid transparent", background: selectedDomain === null ? "rgba(0,229,255,0.08)" : "rgba(255,255,255,0.03)", color: selectedDomain === null ? "#00e5ff" : "rgba(255,255,255,0.45)", cursor: "pointer", fontSize: 11, fontWeight: 600, textAlign: "left", fontFamily: "inherit", transition: "all 0.2s" }}
+              >All</button>
+              {domains.map((d: any) => (
+                <button
+                  key={d.slug}
+                  onClick={() => { setSelectedDomain(d.slug); setSelectedTheme(null); fetchData(d.slug); }}
+                  style={{ padding: "5px 10px", borderRadius: 6, border: selectedDomain === d.slug ? `1px solid ${d.color}40` : "1px solid transparent", background: selectedDomain === d.slug ? `${d.color}12` : "rgba(255,255,255,0.03)", color: selectedDomain === d.slug ? d.color : "rgba(255,255,255,0.45)", cursor: "pointer", fontSize: 11, fontWeight: 600, textAlign: "left", fontFamily: "inherit", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  <span style={{ fontSize: 13 }}>{d.icon}</span>
+                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <nav style={{ flex: 1, padding: "0 8px" }}>
           {navItems.map(item => (
             <button key={item.id} onClick={() => handleNav(item.id)} style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", padding: "10px 12px", marginBottom: 2, background: view === item.id ? "rgba(0,229,255,0.08)" : "transparent", border: view === item.id ? "1px solid rgba(0,229,255,0.15)" : "1px solid transparent", borderRadius: 8, color: view === item.id ? "#00e5ff" : "rgba(255,255,255,0.5)", cursor: "pointer", fontSize: 13, fontWeight: 500, transition: "all 0.3s", textAlign: "left", fontFamily: "inherit", boxShadow: view === item.id ? "0 0 16px rgba(0,229,255,0.08), inset 0 0 12px rgba(0,229,255,0.03)" : "none" }}>
@@ -762,6 +794,18 @@ export default function NexusApp() {
 
       {/* Main Content */}
       <div style={{ flex: 1, overflow: "auto", padding: "32px 40px", opacity: animateIn ? 1 : 0, transform: animateIn ? "translateY(0)" : "translateY(12px)", transition: "opacity 0.4s ease, transform 0.4s ease", position: "relative", zIndex: 5 }}>
+        {/* Domain context badge */}
+        {selectedDomain && (() => {
+          const d = domains.find((d: any) => d.slug === selectedDomain);
+          if (!d) return null;
+          return (
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 20, padding: "5px 14px 5px 10px", borderRadius: 20, background: `${d.color}15`, border: `1px solid ${d.color}30`, color: d.color, fontSize: 12, fontWeight: 600 }}>
+              <span style={{ fontSize: 15 }}>{d.icon}</span>
+              <span>{d.name}</span>
+              <button onClick={() => { setSelectedDomain(null); fetchData(null); }} style={{ marginLeft: 4, background: "none", border: "none", color: d.color, cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0, opacity: 0.7, fontFamily: "inherit" }}>×</button>
+            </div>
+          );
+        })()}
         {loading && <Spinner />}
         {error && <div style={{ padding: 40, color: "#ff4081" }}>Error: {error}</div>}
         {!loading && !error && <>
@@ -770,7 +814,7 @@ export default function NexusApp() {
           {view === "library" && <LibraryView sources={sources} claims={claims} selectedSource={selectedSource} onSelectSource={setSelectedSource} tc={tc} />}
           {view === "claims" && <ClaimsView claims={claims} sources={sources} FSRS={FSRS} tc={tc} />}
           {view === "graph" && <GraphView claims={claims} sources={sources} themeStats={themeStats} tc={tc} FSRS={FSRS} />}
-          {view === "analytics" && <AnalyticsView tc={tc} />}
+          {view === "analytics" && <AnalyticsView tc={tc} domainSlug={selectedDomain} />}
           {view === "chat" && <ChatView tc={tc} />}
           {view === "tables" && <TablesView tc={tc} />}
           {view === "notes" && <NotesView notes={notes} sources={sources} claims={claims} themeStats={themeStats} themeIdMap={themeIdMap} tc={tc} onRefresh={fetchData} />}
@@ -2088,14 +2132,16 @@ function GraphView({ claims, sources, themeStats, tc, FSRS }: any) {
 // ============================================================
 // Analytics View
 // ============================================================
-function AnalyticsView({ tc }: any) {
+function AnalyticsView({ tc, domainSlug }: any) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [retentionTheme, setRetentionTheme] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/analytics").then(r => r.ok ? r.json() : { success: false }).then(d => { if (d.success) setData(d.data); }).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    const ds = domainSlug ? `?domain=${domainSlug}` : "";
+    fetch(`/api/analytics${ds}`).then(r => r.ok ? r.json() : { success: false }).then(d => { if (d.success) setData(d.data); }).catch(() => {}).finally(() => setLoading(false));
+  }, [domainSlug]);
 
   if (loading) return <Spinner />;
   if (!data) return <div style={{ color: "rgba(255,255,255,0.3)", padding: 40 }}>No analytics data yet. Complete some reviews first.</div>;

@@ -118,7 +118,8 @@ Respond with valid JSON — an array of theme suggestions:
   {
     "name": "Theme Name",
     "relevance": 0.95,
-    "isNew": false
+    "isNew": false,
+    "domain": "Psychedelic Science"
   }
 ]
 
@@ -131,6 +132,7 @@ RULES:
 - Relevance score: 0-1, how central this theme is to the source content
 - Typically 1-4 themes per source
 - New theme names should use Title Case
+- "domain" field: identify the high-level domain this content belongs to. Use one of: "Psychedelic Science", "AI & Technology", "Health & Longevity", "Economics & Finance", or "General"
 
 Return ONLY valid JSON, no markdown.`;
 

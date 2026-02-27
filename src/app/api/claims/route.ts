@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
   try {
   const { searchParams } = new URL(request.url);
   const themeId = searchParams.get("themeId");
+  const domainSlug = searchParams.get("domain");
   const status = searchParams.get("status");
   const sortBy = searchParams.get("sortBy") || "confidence"; // confidence | retention | status | date
   const limit = parseInt(searchParams.get("limit") || "100");
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
   if (status) where.status = status;
   if (themeId) {
     where.themes = { some: { themeId } };
+  } else if (domainSlug) {
+    where.themes = { some: { theme: { domain: { slug: domainSlug } } } };
   }
 
   // Determine sort order

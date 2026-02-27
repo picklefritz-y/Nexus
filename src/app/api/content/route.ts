@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type");
   const themeId = searchParams.get("themeId");
+  const domainSlug = searchParams.get("domain");
   const status = searchParams.get("status");
   const search = searchParams.get("search");
   const limit = parseInt(searchParams.get("limit") || "50");
@@ -28,6 +29,8 @@ export async function GET(request: NextRequest) {
   }
   if (themeId) {
     where.themes = { some: { themeId } };
+  } else if (domainSlug) {
+    where.themes = { some: { theme: { domain: { slug: domainSlug } } } };
   }
 
   const [sources, total] = await Promise.all([

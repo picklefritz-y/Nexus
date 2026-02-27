@@ -10,9 +10,16 @@ const MVP_USER_ID = "user_mvp";
 
 export async function GET(request: NextRequest) {
   try {
+  const domainSlug = request.nextUrl.searchParams.get("domain");
   const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 86400000);
+
+  const domainClaimFilter = domainSlug
+    ? { themes: { some: { theme: { domain: { slug: domainSlug } } } } }
+    : {};
+  const domainSourceFilter = domainSlug
+    ? { themes: { some: { theme: { domain: { slug: domainSlug } } } } }
+    : {};
 
   const [
     reviewLogs,
@@ -23,7 +30,10 @@ export async function GET(request: NextRequest) {
   ] = await Promise.all([
     // All review logs (last 90 days)
     prisma.reviewLog.findMany({
-      where: { userId: MVP_USER_ID, reviewedAt: { gte: ninetyDaysAgo } },
+      where: {
+        userId: MVP_USER_ID, reviewedAt: { gte: ninetyDaysAgo },
+        ...(domainSlug ? { card: { claim: { themes: { some: { theme: { domain: { slug: domainSlug } } } } } } } : {}),
+      },
       select: {
         rating: true,
         reviewedAt: true,
@@ -50,7 +60,10 @@ export async function GET(request: NextRequest) {
 
     // All review cards
     prisma.reviewCard.findMany({
-      where: { userId: MVP_USER_ID },
+      where: {
+        userId: MVP_USER_ID,
+        ...(domainSlug ? { claim: { themes: { some: { theme: { domain: { slug: domainSlug } } } } } } : {}),
+      },
       select: {
         id: true, due: true, stability: true, difficulty: true,
         reps: true, lapses: true, state: true, lastReview: true,
@@ -66,13 +79,14 @@ export async function GET(request: NextRequest) {
 
     // Claim count with creation dates
     prisma.claim.findMany({
+      where: domainClaimFilter,
       select: { id: true, status: true, confidence: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
 
     // Source count with dates
     prisma.source.findMany({
-      where: { userId: MVP_USER_ID, status: "COMPLETE" },
+      where: { userId: MVP_USER_ID, status: "COMPLETE", ...domainSourceFilter },
       select: { id: true, type: true, addedAt: true },
       orderBy: { addedAt: "asc" },
     }),
