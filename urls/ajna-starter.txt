@@ -1,0 +1,89 @@
+# ============================================================================
+# AJNA BioSciences — Nexus knowledge base starter list
+# ============================================================================
+# Usage: npx tsx scripts/ingest-batch.ts urls/ajna-starter.txt
+#
+# Lines starting with # are comments. Blank lines are skipped.
+# The batch script will skip URLs that already exist in your DB by default.
+#
+# Curated to support AJNA's thesis: natural/full-spectrum botanical
+# psychedelics vs. isolated/synthetic compounds, FDA botanical drug pathway,
+# and the broader psychedelic-as-medicine evidence base.
+# ============================================================================
+
+
+# ----------------------------------------------------------------------------
+# THEME: Natural vs Synthetic Psilocybin (entourage effect)
+# Already in Nexus — listed here for reference. Uncomment to re-run.
+# ----------------------------------------------------------------------------
+# https://doi.org/10.1038/s41380-024-02477-w        # Shahar 2024 — PME vs synthetic, mouse brain
+# https://doi.org/10.1556/2054.2024.00379           # Kryskow 2024 — patient reports natural vs synthetic
+# https://doi.org/10.3389/fphar.2024.1391412        # Lerer 2024 — IEG expression follow-up to Shahar
+# https://doi.org/10.1038/s41598-026-39483-7        # Murray 2026 — entourage effect network pharmacology
+# https://doi.org/10.1080/02791072.2024.2446445     # Syed 2024 — Global Psychedelic Survey preferences
+# https://doi.org/10.3390/molecules26102948         # Lowe 2021 — therapeutic potential of psilocybin review
+# https://doi.org/10.1038/s41429-020-0311-8         # Nichols 2020 — ancient magic to modern medicine
+
+
+# ----------------------------------------------------------------------------
+# THEME: Psilocybin Clinical Trials (depression, TRD)
+# New — extends the clinical evidence base
+# ----------------------------------------------------------------------------
+
+# Borissova & Rucker (2024) — BJPsych Bulletin update on the development of
+# psilocybin therapy for TRD. Good overview of where Phase 2/3 trials stand.
+https://doi.org/10.1192/bjb.2023.25
+
+# Meikle et al. (2025) — Australian pilot clinical trial of psilocybin with
+# psychotherapeutic support for TRD. Real-world clinical data.
+https://doi.org/10.1177/20451253251377187
+
+
+# ----------------------------------------------------------------------------
+# THEME: Ayahuasca & DMT — natural plant medicine evidence
+# New theme — supports AJNA's broader natural-compound thesis beyond psilocybin
+# ----------------------------------------------------------------------------
+
+# Aicher et al. (2024) — controlled trial of an ayahuasca-inspired DMT + harmine
+# formulation vs harmine alone vs placebo. Directly addresses the natural-brew
+# vs isolated-compound question. Frontiers in Psychiatry.
+https://doi.org/10.3389/fpsyt.2023.1302559
+
+# D'Souza et al. (2022) — exploratory study of dose-related safety, tolerability,
+# and efficacy of DMT in healthy volunteers and MDD. Neuropsychopharmacology.
+https://doi.org/10.1038/s41386-022-01344-y
+
+# Dos Santos et al. (2021) — ayahuasca for social anxiety disorder, pilot RCT.
+# Whole-brew evidence for anxiety indications.
+https://doi.org/10.1097/JCP.0000000000001428
+
+
+# ----------------------------------------------------------------------------
+# THEME: Ibogaine — naturally derived psychoactive for TBI/PTSD/SUD
+# New theme — relevant if AJNA is exploring other plant-derived candidates
+# ----------------------------------------------------------------------------
+
+# Cherian et al. (2024) — Stanford magnesium-ibogaine study in 30 Special
+# Operations veterans with TBI. Nature Medicine. Major data point for the
+# field — single-dose, durable effects across PTSD/depression/anxiety/cognition.
+https://doi.org/10.1038/s41591-023-02705-w
+
+
+# ----------------------------------------------------------------------------
+# THEME: FDA Botanical Drug Regulatory Pathway
+# New theme — directly relevant to AJNA's regulatory strategy
+# ----------------------------------------------------------------------------
+
+# Wu et al. (2020) — Scientific and Regulatory Approach to Botanical Drug
+# Development: A U.S. FDA Perspective. Journal of Natural Products.
+# Authored by FDA reviewers. Covers totality-of-evidence approach, IND/NDA
+# requirements, and the unique pathway for complex botanical mixtures.
+https://doi.org/10.1021/acs.jnatprod.9b00949
+
+
+# ============================================================================
+# Add new sources below this line as you find them.
+# Suggested format:
+#   # Author Year — short description (journal)
+#   https://doi.org/...
+# ============================================================================

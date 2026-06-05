@@ -19,13 +19,16 @@ import dotenv from "dotenv";
 import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { fileURLToPath } from "node:url";
 
 dotenv.config();
 
-const prisma = new PrismaClient();
+// Exported so batch runners (scripts/ingest-batch.ts) can reuse the same
+// Prisma client and user id instead of opening a second connection pool.
+export const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 const CLAUDE_MODEL = "claude-sonnet-4-20250514";
-const MVP_USER_ID = "user_mvp";
+export const MVP_USER_ID = "user_mvp";
 
 // --- Logging ---
 
@@ -38,9 +41,9 @@ function logDetail(msg: string) { console.log(`  → ${msg}`); }
 
 // --- Source type detection ---
 
-type SourceType = "PAPER" | "ARTICLE" | "PODCAST";
+export type SourceType = "PAPER" | "ARTICLE" | "PODCAST";
 
-function detectType(url: string): SourceType {
+export function detectType(url: string): SourceType {
   const lower = url.toLowerCase();
 
   // Podcast/video detection
@@ -572,24 +575,23 @@ async function storeResults(fetchResult: ExtractedContent, extraction: any, them
   return { sourceId: source.id, claimCount: claimIds.length };
 }
 
-// --- Main ---
+// --- Per-URL ingestion (reusable by the batch runner) ---
 
-async function main() {
-  const input = process.argv[2];
-  if (!input) {
-    console.log("\n❌ Usage: npx tsx scripts/ingest.ts \"ANY_URL\"\n");
-    console.log("Examples:");
-    console.log('  npx tsx scripts/ingest.ts "https://doi.org/10.1038/s41586-024-07386-0"');
-    console.log('  npx tsx scripts/ingest.ts "https://youtube.com/watch?v=..."');
-    console.log('  npx tsx scripts/ingest.ts "https://example.com/some-article"');
-    console.log('  npx tsx scripts/ingest.ts "https://arxiv.org/abs/2401.12345"');
-    console.log('  npx tsx scripts/ingest.ts "https://example.com/paper.pdf"');
-    console.log("\nRequires: npm i -g @steipete/summarize");
-    console.log("Falls back to AssemblyAI for podcasts if summarize is unavailable.\n");
-    process.exit(1);
-  }
+export interface IngestResult {
+  status: "success" | "skipped" | "failed";
+  sourceId?: string;
+  error?: string;
+  title?: string;
+}
 
-  const sourceType = detectType(input);
+/**
+ * Ingest a single URL end-to-end: fetch → extract claims → detect themes →
+ * detect contradictions → store. Never throws and never touches process
+ * lifecycle (no process.exit / prisma.$disconnect) so callers — including the
+ * single-URL CLI below and scripts/ingest-batch.ts — can compose it freely.
+ */
+export async function ingestUrl(url: string): Promise<IngestResult> {
+  const sourceType = detectType(url);
   const typeLabel = sourceType === "PAPER" ? "Paper" : sourceType === "PODCAST" ? "Podcast" : "Article";
 
   console.log("\n" + "═".repeat(60));
@@ -598,7 +600,7 @@ async function main() {
   console.log("═".repeat(60));
 
   try {
-    const fetchResult = await fetchContent(input, sourceType);
+    const fetchResult = await fetchContent(url, sourceType);
     const extraction = await extractClaims(fetchResult.text, fetchResult.title, sourceType);
 
     // Use Claude's extracted title/author if our metadata fetch didn't find them
@@ -619,6 +621,7 @@ async function main() {
     console.log(`  Contradictions: ${contradictions.length}`);
     console.log(`\n  Claims are in your review queue! 🎯\n`);
 
+    return { status: "success", sourceId: result.sourceId, title: fetchResult.title };
   } catch (error: any) {
     console.error("\n❌ Pipeline error:", error.message);
     if (error.message.includes("summarize")) {
@@ -630,10 +633,47 @@ async function main() {
     if (error.message.includes("Paper not found")) {
       console.error("   The DOI/URL wasn't found on Semantic Scholar. Check the identifier.");
     }
+    return { status: "failed", error: error.message };
+  }
+}
+
+// --- Main (single-URL CLI entrypoint) ---
+
+async function main() {
+  const input = process.argv[2];
+  if (!input) {
+    console.log("\n❌ Usage: npx tsx scripts/ingest.ts \"ANY_URL\"\n");
+    console.log("Examples:");
+    console.log('  npx tsx scripts/ingest.ts "https://doi.org/10.1038/s41586-024-07386-0"');
+    console.log('  npx tsx scripts/ingest.ts "https://youtube.com/watch?v=..."');
+    console.log('  npx tsx scripts/ingest.ts "https://example.com/some-article"');
+    console.log('  npx tsx scripts/ingest.ts "https://arxiv.org/abs/2401.12345"');
+    console.log('  npx tsx scripts/ingest.ts "https://example.com/paper.pdf"');
+    console.log("\nTip: ingest many URLs at once with scripts/ingest-batch.ts");
+    console.log("\nRequires: npm i -g @steipete/summarize");
+    console.log("Falls back to AssemblyAI for podcasts if summarize is unavailable.\n");
     process.exit(1);
+  }
+
+  try {
+    const result = await ingestUrl(input);
+    if (result.status === "failed") process.exit(1);
   } finally {
     await prisma.$disconnect();
   }
 }
 
-main();
+// Only run the single-URL CLI when this file is executed directly
+// (e.g. `npx tsx scripts/ingest.ts <url>`), not when imported by the batch
+// runner — otherwise importing ingestUrl would kick off a stray run.
+const invokedDirectly = (() => {
+  try {
+    return !!process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedDirectly) {
+  main();
+}
