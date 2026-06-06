@@ -18,6 +18,20 @@ import { prisma } from "../../../scripts/ingest";
 
 const MODEL = "claude-sonnet-4-20250514";
 
+// Frames the synthesis as academic literature-review work. Nexus is an internal
+// knowledge-management tool at AJNA BioSciences, a clinical-stage company
+// developing botanical drug candidates under the FDA's Botanical Drug
+// Development pathway. The model's output here is a literature review built from
+// claims already extracted from peer-reviewed papers — the same work a
+// researcher does writing the background section of a manuscript or regulatory
+// filing. Stated up front so a dense scientific payload reads as the academic
+// synthesis it is, rather than tripping a content-policy false positive.
+const SYSTEM_PROMPT = `You are a scientific literature synthesis assistant for a knowledge-management tool used internally at AJNA BioSciences, a clinical-stage biopharmaceutical company that develops botanical drug candidates under the FDA's Botanical Drug Development pathway.
+
+Your task is academic literature review. You synthesize structured claims that have already been extracted from peer-reviewed scientific papers into a balanced, cited review of the published evidence — the same work a researcher performs when writing the background or literature-review section of a scientific manuscript or regulatory submission: organizing prior findings, weighing the strength of evidence, and surfacing where the literature agrees, disagrees, or is silent.
+
+Work only from the extracted claims and source metadata provided. Attribute every statement to its source, represent the evidence accurately — including its uncertainty and any contradictions — and do not editorialize beyond what the claims support.`;
+
 // Reports synthesize ~5 sources with dozens of claims; give the model room
 // for a thorough write-up without letting a runaway response burn tokens.
 const MAX_REPORT_TOKENS = 8192;
@@ -169,6 +183,12 @@ export async function generateReport(queryId: string): Promise<ReportResult> {
     );
 
     // --- PROMPT ---
+    // Build each source block from structured extracted claims + bibliographic
+    // metadata only. We deliberately do NOT include the freeform AI `summary`
+    // (nor raw text / abstracts, which live on Source.rawText and
+    // DeepResearchCandidate.abstract and were never passed): the claims are
+    // short, citation-anchored, confidence-scored statements, which is exactly
+    // what the synthesis should reason over.
     const sourceBlocks = reportSources
       .map((s, i) => {
         const claimLines = s.claims
@@ -176,7 +196,6 @@ export async function generateReport(queryId: string): Promise<ReportResult> {
           .join("\n");
         return `[${i + 1}] ${s.title}
 AUTHOR: ${s.author ?? "unknown"} | YEAR: ${s.year ?? "unknown"} | JOURNAL: ${s.journal ?? "unknown"}
-SUMMARY: ${s.summary ?? "(no summary)"}
 EXTRACTED CLAIMS:
 ${claimLines || "  (none)"}`;
       })
@@ -221,6 +240,7 @@ Write a markdown research report that directly answers the research question. Re
     const response = await getClient().messages.create({
       model: MODEL,
       max_tokens: MAX_REPORT_TOKENS,
+      system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: prompt }],
     });
 
