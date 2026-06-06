@@ -95,6 +95,7 @@ model Source {
   claims           ClaimSource[]
   themes           SourceTheme[]
   notes            Note[]
+  deepResearchSources DeepResearchReportSource[]
 
   @@index([userId])
   @@index([type])
@@ -364,6 +365,73 @@ model Digest {
   @@unique([userId, weekStart])
   @@index([userId])
   @@map("digests")
+}
+
+// ============================================================
+// Deep Research
+// ============================================================
+enum DeepResearchStatus {
+  PLANNING
+  SEARCHING
+  EVALUATING
+  INGESTING
+  GENERATING
+  COMPLETE
+  FAILED
+}
+
+model DeepResearchQuery {
+  id            String               @id @default(cuid())
+  userId        String
+  originalQuery String
+  status        DeepResearchStatus   @default(PLANNING)
+  createdAt     DateTime             @default(now())
+  completedAt   DateTime?
+  errorMessage  String?
+
+  subqueries    DeepResearchSubquery[]
+  report        DeepResearchReport?
+
+  @@index([userId])
+  @@map("deep_research_queries")
+}
+
+model DeepResearchSubquery {
+  id            String            @id @default(cuid())
+  parentQueryId String
+  text          String
+  rationale     String
+  order         Int
+
+  parentQuery   DeepResearchQuery @relation(fields: [parentQueryId], references: [id], onDelete: Cascade)
+
+  @@map("deep_research_subqueries")
+}
+
+model DeepResearchReport {
+  id        String   @id @default(cuid())
+  queryId   String   @unique
+  markdown  String
+  createdAt DateTime @default(now())
+
+  query     DeepResearchQuery         @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  sources   DeepResearchReportSource[]
+
+  @@map("deep_research_reports")
+}
+
+model DeepResearchReportSource {
+  id             String @id @default(cuid())
+  reportId       String
+  sourceId       String
+  relevanceScore Float
+  citationCount  Int
+
+  report  DeepResearchReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  source  Source             @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+
+  @@unique([reportId, sourceId])
+  @@map("deep_research_report_sources")
 }
 
 // ============================================================
