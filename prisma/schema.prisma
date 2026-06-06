@@ -96,6 +96,7 @@ model Source {
   themes           SourceTheme[]
   notes            Note[]
   deepResearchSources DeepResearchReportSource[]
+  deepResearchCandidates DeepResearchCandidate[]
 
   @@index([userId])
   @@index([type])
@@ -391,6 +392,7 @@ model DeepResearchQuery {
 
   subqueries    DeepResearchSubquery[]
   report        DeepResearchReport?
+  candidates    DeepResearchCandidate[]
 
   @@index([userId])
   @@map("deep_research_queries")
@@ -404,6 +406,7 @@ model DeepResearchSubquery {
   order         Int
 
   parentQuery   DeepResearchQuery @relation(fields: [parentQueryId], references: [id], onDelete: Cascade)
+  candidates    DeepResearchCandidate[]
 
   @@map("deep_research_subqueries")
 }
@@ -432,6 +435,34 @@ model DeepResearchReportSource {
 
   @@unique([reportId, sourceId])
   @@map("deep_research_report_sources")
+}
+
+// Search hits surfaced for a query (Phase 2). One row per unique candidate
+// paper, scored by the evaluator and either ingested, skipped, or flagged as a
+// duplicate of an existing Source.
+model DeepResearchCandidate {
+  id              String   @id @default(cuid())
+  queryId         String
+  query           DeepResearchQuery @relation(fields: [queryId], references: [id], onDelete: Cascade)
+  subqueryId      String?
+  subquery        DeepResearchSubquery? @relation(fields: [subqueryId], references: [id], onDelete: SetNull)
+  url             String
+  title           String
+  abstract        String?  @db.Text
+  year            Int?
+  citationCount   Int?
+  source          String   // 'semantic-scholar' for now; future: 'web'
+  relevanceScore  Float?   // 0-1, set by evaluator
+  qualityScore    Float?   // 0-1, set by evaluator
+  evaluatorNotes  String?  @db.Text
+  decision        String   @default("PENDING") // PENDING | INGEST | SKIP | DUPLICATE
+  ingestedSourceId String?
+  ingestedSource  Source?  @relation(fields: [ingestedSourceId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+
+  @@index([queryId])
+  @@index([decision])
+  @@map("deep_research_candidates")
 }
 
 // ============================================================
