@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import DeepResearchView from "./DeepResearchView";
 
 // Simple groupBy utility
 function groupBy<T>(arr: T[], fn: (item: T) => string): Record<string, T[]> {
@@ -410,8 +411,8 @@ function NeuralBackground() {
 // ============================================================
 // Main App
 // ============================================================
-export default function NexusApp() {
-  const [view, setView] = useState("dashboard");
+export default function NexusApp({ initialView }: { initialView?: string }) {
+  const [view, setView] = useState(initialView || "dashboard");
   const [sources, setSources] = useState<any[]>([]);
   const [claims, setClaims] = useState<any[]>([]);
   const [themeColors, setThemeColors] = useState<Record<string, { bg: string; accent: string; icon: string }>>({});
@@ -588,6 +589,7 @@ export default function NexusApp() {
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: "◆" },
     { id: "chat", label: "Chat", icon: "◬" },
+    { id: "deep-research", label: "Deep Research", icon: "◎" },
     { id: "tables", label: "Tables", icon: "▤" },
     { id: "graph", label: "Graph", icon: "◉" },
     { id: "analytics", label: "Analytics", icon: "▦" },
@@ -599,6 +601,26 @@ export default function NexusApp() {
   ];
 
   const handleNav = (id: string) => { if (id === "review") { startReview(selectedTheme); return; } setSelectedTheme(null); setView(id); };
+
+  // Open a source's Library detail panel by id (e.g. a Deep Research citation
+  // click). Sources ingested by a research run that finished this session
+  // aren't in the mount-time list yet, so fall back to fetching the one
+  // source directly and refreshing the lists in the background.
+  const handleOpenSource = useCallback(async (sourceId: string) => {
+    const existing = sources.find((s: any) => s.id === sourceId);
+    if (existing) { setSelectedSource(existing); setView("library"); return; }
+    try {
+      const res = await fetch(`/api/content/${sourceId}`);
+      const data = res.ok ? await res.json() : null;
+      if (data?.success && data.data) {
+        setSelectedSource(transformSource(data.data));
+        setView("library");
+        fetchData();
+        return;
+      }
+    } catch (_e) { /* fall through */ }
+    setView("library");
+  }, [sources, fetchData]);
 
   return (
     <div style={{ fontFamily: "'DM Sans', sans-serif", background: "#0c2240", color: "#e4e4e7", minHeight: "100vh", display: "flex", overflow: "hidden", position: "relative" }}>
@@ -816,6 +838,7 @@ export default function NexusApp() {
           {view === "graph" && <GraphView claims={claims} sources={sources} themeStats={themeStats} tc={tc} FSRS={FSRS} />}
           {view === "analytics" && <AnalyticsView tc={tc} domainSlug={selectedDomain} />}
           {view === "chat" && <ChatView tc={tc} />}
+          {view === "deep-research" && <DeepResearchView onOpenSource={handleOpenSource} />}
           {view === "tables" && <TablesView tc={tc} />}
           {view === "notes" && <NotesView notes={notes} sources={sources} claims={claims} themeStats={themeStats} themeIdMap={themeIdMap} tc={tc} onRefresh={fetchData} />}
           {view === "ingest" && <IngestView url={ingestUrl} setUrl={setIngestUrl} step={ingestStep} onSubmit={handleIngest} statusMessage={ingestStatus} />}
@@ -1370,23 +1393,25 @@ function LibraryView({ sources, claims, selectedSource, onSelectSource, tc }: an
   const filtered = sources.filter((s: any) => { if (filter !== "all" && s.type !== filter) return false; if (search && !s.title.toLowerCase().includes(search.toLowerCase()) && !s.author.toLowerCase().includes(search.toLowerCase())) return false; return true; });
   const grouped = groupBy(filtered, (s: any) => { const diff = (Date.now() - new Date(s.date).getTime()) / 86400000; if (diff < 7) return "This Week"; if (diff < 30) return "This Month"; return "Earlier"; });
 
-  const handleSelectSource = async (s: any) => {
-    if (selectedSource?.id === s.id) {
-      onSelectSource(null);
-      setSourceDetail(null);
-      setShowTranscript(false);
-      return;
-    }
-    onSelectSource(s);
+  // Fetch detail whenever the selected source changes — selection can come
+  // from the list below, the ⌘K search overlay, or a Deep Research citation
+  // click, so the fetch lives here rather than in the click handler.
+  useEffect(() => {
+    if (!selectedSource?.id) { setSourceDetail(null); setShowTranscript(false); return; }
+    let cancelled = false;
     setSourceDetail(null);
     setShowTranscript(false);
     setDetailLoading(true);
-    try {
-      const res = await fetch(`/api/content/${s.id}`);
-      const data = res.ok ? await res.json() : null;
-      if (data?.success) setSourceDetail(data.data);
-    } catch (_e) { /* ignore */ }
-    setDetailLoading(false);
+    fetch(`/api/content/${selectedSource.id}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => { if (!cancelled && data?.success) setSourceDetail(data.data); })
+      .catch((_e) => { /* ignore */ })
+      .finally(() => { if (!cancelled) setDetailLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedSource?.id]);
+
+  const handleSelectSource = (s: any) => {
+    onSelectSource(selectedSource?.id === s.id ? null : s);
   };
 
   const detailClaims = sourceDetail?.claims?.map((cs: any) => ({
